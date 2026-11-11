@@ -1,0 +1,56 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "opslab api",
+    "description": "Platform API of opslab (working name).",
+    "license": {
+      "name": ""
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/version": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Returns the version of the api.",
+        "operationId": "version",
+        "responses": {
+          "200": {
+            "description": "Version of the api",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VersionInfo": {
+        "type": "object",
+        "description": "Version of the running api.",
+        "required": [
+          "name",
+          "version"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Project name."
+          },
+          "version": {
+            "type": "string",
+            "description": "Semantic version of the api."
+          }
+        }
+      }
+    }
+  }
+}
