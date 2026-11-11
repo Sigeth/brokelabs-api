@@ -6,27 +6,40 @@ use std::sync::Arc;
 use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::middleware;
 use axum::response::{IntoResponse, Json};
 use axum::routing::get;
 use opslab_auth::Signer;
 use serde::Serialize;
+use sqlx::PgPool;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
+use crate::cluster::Cluster;
+use crate::config::Config;
+use crate::events::{self, Hub};
+
 /// Shared state of the handlers.
 #[derive(Clone)]
 pub struct AppState {
     pub signer: Arc<Signer>,
+    pub db: PgPool,
+    pub cluster: Arc<dyn Cluster>,
+    pub hub: Hub,
+    pub config: Arc<Config>,
 }
 
 #[derive(OpenApi)]
-#[openapi(info(
-    title = "opslab api",
-    description = "Platform API of opslab (working name)."
-))]
+#[openapi(
+    info(
+        title = "opslab api",
+        description = "Platform API of opslab (working name)."
+    ),
+    components(schemas(crate::views::Event))
+)]
 struct ApiDoc;
 
 /// The OpenAPI document of the API, the source of the web UI's TypeScript client.
@@ -35,7 +48,10 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
 }
 
 fn api_router() -> OpenApiRouter<AppState> {
-    OpenApiRouter::with_openapi(ApiDoc::openapi()).routes(routes!(version))
+    OpenApiRouter::with_openapi(ApiDoc::openapi())
+        .routes(routes!(version))
+        .routes(routes!(events::events))
+        .merge(crate::routes::router())
 }
 
 /// Builds the application. When `web_dir` is set, every path that is not an
@@ -50,6 +66,10 @@ pub fn router(state: AppState, web_dir: Option<&Path>) -> Router {
             "/api/openapi.json",
             get(move || async move { Json(spec.as_ref().clone()) }),
         )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::check_origin,
+        ))
         .with_state(state);
     let app = match web_dir {
         Some(dir) => app
@@ -83,6 +103,24 @@ async fn jwks(State(state): State<AppState>) -> impl IntoResponse {
     Json(state.signer.jwks())
 }
 
+/// State for handler tests.
+#[cfg(test)]
+pub fn test_state(db: PgPool, cluster: Arc<dyn Cluster>) -> AppState {
+    let config = Config::from_env_map(&[
+        ("OPSLAB_DATABASE_URL", "postgres://localhost/unused"),
+        ("OPSLAB_GATEWAY_URL", "http://gw.test"),
+        ("OPSLAB_ALLOWED_ORIGINS", "http://opslab.test"),
+    ])
+    .unwrap();
+    AppState {
+        signer: Arc::new(Signer::generate().unwrap()),
+        db,
+        cluster,
+        hub: Hub::default(),
+        config: Arc::new(config),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use axum::body::Body;
@@ -93,9 +131,16 @@ mod tests {
     use super::*;
 
     fn state() -> AppState {
-        AppState {
-            signer: Arc::new(Signer::generate().unwrap()),
-        }
+        let db = sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgres://localhost/unused")
+            .unwrap();
+        test_state(db, Arc::new(crate::cluster::fake::FakeCluster::default()))
+    }
+
+    #[tokio::test]
+    async fn api_routes_need_a_session() {
+        let (status, body) = get(router(state(), None), "/api/v1/me").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
     }
 
     async fn get(app: Router, uri: &str) -> (StatusCode, String) {

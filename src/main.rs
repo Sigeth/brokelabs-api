@@ -4,7 +4,17 @@
 //! generate the web UI's TypeScript client).
 
 mod app;
+mod auth;
+mod cluster;
 mod config;
+mod db;
+mod error;
+mod events;
+mod routes;
+mod views;
+
+#[cfg(test)]
+mod handler_tests;
 
 use std::sync::Arc;
 
@@ -39,11 +49,29 @@ async fn main() -> anyhow::Result<()> {
     };
     tracing::info!(key_id = signer.key_id(), "access token signing key loaded");
 
+    let db = db::connect(&config.database_url)
+        .await
+        .context("connecting to the database")?;
+    auth::bootstrap_solo(&db, &config.solo_username, config.solo_password.as_deref()).await?;
+
+    let client = kube::Client::try_default()
+        .await
+        .context("connecting to Kubernetes")?;
+    let cluster = cluster::Kube {
+        client: client.clone(),
+        instances_namespace: config.instances_namespace.clone(),
+        system_namespace: config.system_namespace.clone(),
+    };
     let state = AppState {
         signer: Arc::new(signer),
+        db,
+        cluster: Arc::new(cluster),
+        hub: events::Hub::default(),
+        config: Arc::new(config.clone()),
     };
-    let app = app::router(state, config.web_dir.as_deref());
+    tokio::spawn(events::watch(state.clone(), client));
 
+    let app = app::router(state, config.web_dir.as_deref());
     let listener = TcpListener::bind(config.listen)
         .await
         .with_context(|| format!("binding {}", config.listen))?;

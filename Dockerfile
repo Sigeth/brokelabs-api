@@ -1,6 +1,7 @@
 FROM docker.io/library/rust:1.96 AS build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
+COPY migrations migrations
 COPY src src
 RUN cargo build --release
 
