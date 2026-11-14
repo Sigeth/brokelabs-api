@@ -54,14 +54,12 @@ impl Cluster for Kube {
     }
 
     async fn instructions(&self, challenge: &Challenge) -> Result<Option<String>> {
-        // Inline packages keep their files in a ConfigMap; OCI packages
-        // (M3) will be extracted by the operator.
+        // The operator reports the ConfigMap holding the installed files,
+        // whatever the source of the package (inline or registry).
         let Some(cm_name) = challenge
-            .spec
-            .source
-            .inline
+            .status
             .as_ref()
-            .and_then(|i| i.files_config_map.as_deref())
+            .and_then(|s| s.files_config_map.as_deref())
         else {
             return Ok(None);
         };
