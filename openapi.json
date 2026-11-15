@@ -9,6 +9,296 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/admin/catalogs": {
+      "get": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Catalog sources and their last sync.",
+        "operationId": "list_catalogs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogView"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Adds a catalog source. The operator syncs and verifies it.",
+        "operationId": "add_catalog",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewCatalog"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/catalogs/{name}": {
+      "delete": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Removes a catalog source, the challenges installed from it and their\nrunning instances (D43).",
+        "operationId": "remove_catalog",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Catalog source name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/challenges": {
+      "get": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Installed challenges, whatever their source.",
+        "operationId": "list_installed",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InstalledView"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/challenges/{name}": {
+      "put": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Installs a challenge from a catalog source, or moves it to another\nversion. The operator verifies the package against the trust policy of\nthe source and its permissions against the platform policy.",
+        "operationId": "install",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Package name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstalledView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Removes a challenge and stops its running instances (D43). Scores stay.",
+        "operationId": "remove_challenge",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Challenge name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/marketplace": {
+      "get": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "Packages listed by every catalog source, with what is installed.",
+        "operationId": "marketplace",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MarketplaceEntry"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": [
@@ -485,6 +775,59 @@
   },
   "components": {
     "schemas": {
+      "CatalogView": {
+        "type": "object",
+        "description": "A catalog source and its last sync.",
+        "required": [
+          "name",
+          "ref",
+          "trust",
+          "ready",
+          "packages"
+        ],
+        "properties": {
+          "lastSync": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "RFC 3339 time of the last successful sync."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the source is not ready, or what the last sync found."
+          },
+          "name": {
+            "type": "string"
+          },
+          "packages": {
+            "type": "integer",
+            "description": "Packages listed by the last verified index.",
+            "minimum": 0
+          },
+          "ready": {
+            "type": "boolean",
+            "description": "The last sync verified the index."
+          },
+          "ref": {
+            "type": "string",
+            "description": "OCI reference of the catalog index."
+          },
+          "signer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who signed the index."
+          },
+          "trust": {
+            "$ref": "#/components/schemas/TrustView"
+          }
+        }
+      },
       "ChallengeDetail": {
         "allOf": [
           {
@@ -730,6 +1073,117 @@
         ],
         "description": "Pushed on GET /api/v1/events (server-sent events, one JSON object per message)."
       },
+      "InstallRequest": {
+        "type": "object",
+        "description": "Installs or updates a challenge from a catalog source.",
+        "required": [
+          "source",
+          "version"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Catalog source listing the package."
+          },
+          "version": {
+            "type": "string",
+            "description": "Version to install."
+          }
+        }
+      },
+      "InstalledView": {
+        "type": "object",
+        "description": "An installed challenge, as the operator reports it.",
+        "required": [
+          "name",
+          "sourceKind",
+          "ready",
+          "runnable",
+          "mirrored",
+          "activeInstances"
+        ],
+        "properties": {
+          "activeInstances": {
+            "type": "integer",
+            "description": "Instances that removing the challenge would stop.",
+            "minimum": 0
+          },
+          "catalog": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Catalog source, for catalog installs."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the operator says about the installation."
+          },
+          "mirrored": {
+            "type": "boolean",
+            "description": "The package and its images are in the in-cluster registry mirror."
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PermissionsView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ready": {
+            "type": "boolean",
+            "description": "Installed and verified."
+          },
+          "requestedVersion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Version asked for, for catalog installs (may not be installed yet)."
+          },
+          "runnable": {
+            "type": "boolean"
+          },
+          "signer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who signed the package."
+          },
+          "sourceKind": {
+            "type": "string",
+            "description": "Where it comes from: catalog, oci or inline (development)."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unrunnableReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "InstancePhase": {
         "type": "string",
         "description": "Lifecycle phase of an instance.",
@@ -784,6 +1238,22 @@
           }
         }
       },
+      "KeylessView": {
+        "type": "object",
+        "description": "A Sigstore keyless identity.",
+        "required": [
+          "issuer",
+          "subjectRegExp"
+        ],
+        "properties": {
+          "issuer": {
+            "type": "string"
+          },
+          "subjectRegExp": {
+            "type": "string"
+          }
+        }
+      },
       "LoginRequest": {
         "type": "object",
         "required": [
@@ -796,6 +1266,72 @@
           },
           "username": {
             "type": "string"
+          }
+        }
+      },
+      "MarketplaceEntry": {
+        "type": "object",
+        "description": "A package offered by a catalog source.",
+        "required": [
+          "source",
+          "name",
+          "title",
+          "category",
+          "difficulty",
+          "tags",
+          "versions",
+          "updateAvailable"
+        ],
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "difficulty": {
+            "type": "string"
+          },
+          "installed": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InstalledView",
+                "description": "The installed challenge of the same name, if any (from this source or\nanother one)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "description": "Catalog source listing it."
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "title": {
+            "type": "string"
+          },
+          "updateAvailable": {
+            "type": "boolean",
+            "description": "A newer version than the installed one is listed by this source."
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackageVersionView"
+            },
+            "description": "Versions, newest first."
           }
         }
       },
@@ -831,6 +1367,28 @@
           }
         }
       },
+      "NewCatalog": {
+        "type": "object",
+        "description": "A new catalog source.",
+        "required": [
+          "name",
+          "ref",
+          "trust"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the source (a DNS label)."
+          },
+          "ref": {
+            "type": "string",
+            "description": "OCI reference of the catalog index, e.g. \"ghcr.io/school/catalog:latest\"."
+          },
+          "trust": {
+            "$ref": "#/components/schemas/TrustView"
+          }
+        }
+      },
       "OpenTerminal": {
         "type": "object",
         "required": [
@@ -840,6 +1398,79 @@
           "machine": {
             "type": "string",
             "description": "Machine of one of the challenge's terminals."
+          }
+        }
+      },
+      "PackageVersionView": {
+        "type": "object",
+        "description": "A published version of a package.",
+        "required": [
+          "version"
+        ],
+        "properties": {
+          "permissions": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PermissionsView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "PermissionsView": {
+        "type": "object",
+        "description": "What a package needs from the cluster, derived from it (D41).",
+        "required": [
+          "runtimes",
+          "cpu",
+          "memory",
+          "egress"
+        ],
+        "properties": {
+          "checkerImage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Custom checker image, with access to the machines."
+          },
+          "cpu": {
+            "type": "string",
+            "description": "CPU of the machines of one instance, e.g. \"1500m\"."
+          },
+          "egress": {
+            "type": "string",
+            "description": "Outbound network access: none, allowlist or internet."
+          },
+          "egressAllowlist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "extraManifestKinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Kinds created by extra manifests in the instance namespace."
+          },
+          "memory": {
+            "type": "string",
+            "description": "Memory of the machines of one instance, e.g. \"1536Mi\"."
+          },
+          "runtimes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Runtimes of its machines (pod, vm...)."
           }
         }
       },
@@ -928,6 +1559,30 @@
           },
           "machine": {
             "type": "string"
+          }
+        }
+      },
+      "TrustView": {
+        "type": "object",
+        "description": "Who a catalog source trusts (D40).",
+        "properties": {
+          "allowUnsigned": {
+            "type": "boolean",
+            "description": "Accepts unsigned packages. For local development only."
+          },
+          "keyless": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KeylessView"
+            },
+            "description": "Sigstore keyless identities, e.g. a CI workflow."
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "PEM public keys (cosign or `opslab challenge sign --key`)."
           }
         }
       },
