@@ -783,7 +783,8 @@
           "ref",
           "trust",
           "ready",
-          "packages"
+          "packages",
+          "managedByChart"
         ],
         "properties": {
           "lastSync": {
@@ -792,6 +793,10 @@
               "null"
             ],
             "description": "RFC 3339 time of the last successful sync."
+          },
+          "managedByChart": {
+            "type": "boolean",
+            "description": "Installed by the Helm chart (the official catalog): removing it here\nlasts until the next upgrade, unless the chart values disable it."
           },
           "message": {
             "type": [

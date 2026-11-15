@@ -81,6 +81,9 @@ pub struct CatalogView {
     pub last_sync: Option<String>,
     /// Packages listed by the last verified index.
     pub packages: usize,
+    /// Installed by the Helm chart (the official catalog): removing it here
+    /// lasts until the next upgrade, unless the chart values disable it.
+    pub managed_by_chart: bool,
 }
 
 /// A new catalog source.
@@ -567,6 +570,13 @@ fn catalog_view(cs: &CatalogSource) -> CatalogView {
             .filter(|s| !s.is_empty()),
         last_sync: status.and_then(|s| s.last_sync_time.clone()),
         packages: status.and_then(|s| s.packages.as_ref()).map_or(0, Vec::len),
+        managed_by_chart: cs
+            .metadata
+            .labels
+            .as_ref()
+            .and_then(|l| l.get("app.kubernetes.io/managed-by"))
+            // Tilt relabels what it applies from the chart (dev loop).
+            .is_some_and(|m| m == "Helm" || m == "tilt"),
     }
 }
 
