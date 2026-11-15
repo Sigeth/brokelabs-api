@@ -3,6 +3,7 @@
 //! `opslab-api --openapi` prints the OpenAPI document and exits (used to
 //! generate the web UI's TypeScript client).
 
+mod admin;
 mod app;
 mod auth;
 mod cluster;

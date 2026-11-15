@@ -10,6 +10,8 @@ pub enum ApiError {
     #[error("sign in first")]
     Unauthorized,
     #[error("{0}")]
+    BadRequest(String),
+    #[error("{0}")]
     Forbidden(String),
     #[error("{0}")]
     NotFound(String),
@@ -26,8 +28,17 @@ impl From<sqlx::Error> for ApiError {
 }
 
 impl From<kube::Error> for ApiError {
+    /// Refusals of the API server (validation, conflicts) are the client's
+    /// errors; anything else is ours.
     fn from(e: kube::Error) -> Self {
-        Self::Internal(e.into())
+        match &e {
+            kube::Error::Api(resp) if resp.code == 400 || resp.code == 422 => {
+                Self::BadRequest(resp.message.clone())
+            }
+            kube::Error::Api(resp) if resp.code == 409 => Self::Conflict(resp.message.clone()),
+            kube::Error::Api(resp) if resp.code == 404 => Self::NotFound(resp.message.clone()),
+            _ => Self::Internal(e.into()),
+        }
     }
 }
 
@@ -42,6 +53,7 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = match &self {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,

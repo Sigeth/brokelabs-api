@@ -112,7 +112,14 @@ pub async fn bootstrap_solo(
             &generated
         }
     };
-    db::create_user(db, username, username, "admin", &hash_password(password)?).await?;
+    db::create_user(
+        db,
+        username,
+        username,
+        ADMIN_ROLE,
+        &hash_password(password)?,
+    )
+    .await?;
     tracing::info!(username, "solo user created");
     Ok(())
 }
@@ -132,6 +139,24 @@ impl FromRequestParts<AppState> for CurrentUser {
             Some(user) => Ok(CurrentUser(user)),
             None => Err(ApiError::Unauthorized),
         }
+    }
+}
+
+/// The signed-in user, who must be an admin: marketplace and catalog sources.
+pub struct AdminUser(pub User);
+
+/// The role that may install challenges and manage catalog sources.
+pub const ADMIN_ROLE: &str = "admin";
+
+impl FromRequestParts<AppState> for AdminUser {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, ApiError> {
+        let CurrentUser(user) = CurrentUser::from_request_parts(parts, state).await?;
+        if user.role != ADMIN_ROLE {
+            return Err(ApiError::Forbidden("only admins can do this".into()));
+        }
+        Ok(AdminUser(user))
     }
 }
 

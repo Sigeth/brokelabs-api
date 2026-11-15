@@ -35,6 +35,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(get_instance, stop_instance))
         .routes(routes!(open_terminal))
         .routes(routes!(latest_check, start_check))
+        .merge(crate::admin::router())
 }
 
 type Result<T> = std::result::Result<T, ApiError>;

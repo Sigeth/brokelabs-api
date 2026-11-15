@@ -313,3 +313,182 @@ async fn c_user(state: &AppState) -> uuid::Uuid {
         .unwrap()
         .id
 }
+
+fn catalog_source() -> opslab_types::CatalogSource {
+    let perms = json!({"runtimes": ["vm"], "cpu": "1", "memory": "1Gi", "egress": "none"});
+    serde_json::from_value(json!({
+        "apiVersion": "opslab.io/v1alpha1",
+        "kind": "CatalogSource",
+        "metadata": {"name": "official"},
+        "spec": {"ref": "ghcr.io/x/catalog:latest", "trust": {"keyless": [{"issuer": "https://i", "subjectRegExp": ".*"}]}},
+        "status": {
+            "signer": "ci (https://i)",
+            "conditions": [{"type": "Ready", "status": "True", "reason": "Synced", "message": "1 packages listed",
+                            "lastTransitionTime": "2026-11-15T10:00:00Z"}],
+            "packages": [{"name": "ssh-hardening", "title": "SSH hardening", "category": "linux-hardening", "difficulty": "easy",
+                "versions": [{"version": "1.1.0", "ref": "ghcr.io/x/ssh@sha256:b", "permissions": perms},
+                             {"version": "1.0.0", "ref": "ghcr.io/x/ssh@sha256:a", "permissions": perms}]}]
+        }
+    }))
+    .unwrap()
+}
+
+async fn sign_in(c: &mut Client, username: &str, password: &str) {
+    let (status, _) = c
+        .send(
+            "POST",
+            "/api/v1/auth/login",
+            Some(json!({"username": username, "password": password})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn install_from_the_marketplace() {
+    let Some((_, cluster, mut c)) = setup().await else {
+        return;
+    };
+    cluster
+        .catalog_sources
+        .lock()
+        .unwrap()
+        .push(catalog_source());
+    sign_in(&mut c, "admin", "pw").await;
+
+    let (status, catalogs) = c.send("GET", "/api/v1/admin/catalogs", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (
+            catalogs[0]["ready"].as_bool(),
+            catalogs[0]["packages"].as_u64()
+        ),
+        (Some(true), Some(1))
+    );
+
+    let (_, entries) = c.send("GET", "/api/v1/admin/marketplace", None).await;
+    let entry = &entries[0];
+    assert_eq!(entry["name"], "ssh-hardening");
+    assert_eq!(entry["versions"][0]["permissions"]["cpu"], "1");
+    assert!(entry["installed"].is_null());
+
+    // Install the older version: an update is then offered.
+    let (status, installed) = c
+        .send(
+            "PUT",
+            "/api/v1/admin/challenges/ssh-hardening",
+            Some(json!({"source": "official", "version": "1.0.0"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{installed}");
+    assert_eq!(installed["requestedVersion"], "1.0.0");
+    let ch = cluster
+        .challenges
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|c| c.metadata.name.as_deref() == Some("ssh-hardening"))
+        .cloned()
+        .unwrap();
+    let src = ch.spec.source.catalog.unwrap();
+    assert_eq!(
+        (src.source.as_str(), src.version.as_str()),
+        ("official", "1.0.0")
+    );
+
+    // Unlisted versions and challenges installed otherwise are refused.
+    let (status, _) = c
+        .send(
+            "PUT",
+            "/api/v1/admin/challenges/ssh-hardening",
+            Some(json!({"source": "official", "version": "9.9.9"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = c
+        .send(
+            "PUT",
+            "/api/v1/admin/challenges/hello",
+            Some(json!({"source": "official", "version": "1.0.0"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "hello is not listed");
+
+    // Removing the source removes what was installed from it (D43).
+    assert_eq!(
+        c.send("DELETE", "/api/v1/admin/catalogs/official", None)
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let (_, installed) = c.send("GET", "/api/v1/admin/challenges", None).await;
+    let names: Vec<&str> = installed
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|i| i["name"].as_str())
+        .collect();
+    assert_eq!(names, ["hello"]);
+}
+
+#[tokio::test]
+async fn add_a_catalog_source() {
+    let Some((_, cluster, mut c)) = setup().await else {
+        return;
+    };
+    sign_in(&mut c, "admin", "pw").await;
+    let (status, _) = c
+        .send(
+            "POST",
+            "/api/v1/admin/catalogs",
+            Some(json!({"name": "school", "ref": "registry.school/catalog:latest", "trust": {}})),
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "a source must trust someone"
+    );
+    let (status, created) = c
+        .send(
+            "POST",
+            "/api/v1/admin/catalogs",
+            Some(
+                json!({"name": "school", "ref": "registry.school/catalog:latest",
+                        "trust": {"keys": ["-----BEGIN PUBLIC KEY-----\n..."]}}),
+            ),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let sources = cluster.catalog_sources.lock().unwrap();
+    assert_eq!(sources[0].spec.trust.keys.as_ref().map(Vec::len), Some(1));
+    assert_eq!(sources[0].spec.trust.allow_unsigned, None);
+}
+
+#[tokio::test]
+async fn students_cannot_use_the_marketplace() {
+    let Some((state, _, mut c)) = setup().await else {
+        return;
+    };
+    db::create_user(
+        &state.db,
+        "bob",
+        "Bob",
+        "student",
+        &auth::hash_password("pw").unwrap(),
+    )
+    .await
+    .unwrap();
+    sign_in(&mut c, "bob", "pw").await;
+    for (method, uri) in [
+        ("GET", "/api/v1/admin/marketplace"),
+        ("GET", "/api/v1/admin/catalogs"),
+        ("DELETE", "/api/v1/admin/challenges/hello"),
+    ] {
+        assert_eq!(
+            c.send(method, uri, None).await.0,
+            StatusCode::FORBIDDEN,
+            "{method} {uri}"
+        );
+    }
+}

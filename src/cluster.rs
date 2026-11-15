@@ -6,7 +6,7 @@ use k8s_openapi::api::core::v1::ConfigMap;
 use kube::api::{DeleteParams, ListParams, PostParams};
 use kube::{Api, Client};
 use opslab_types::conventions::{DEFAULT_INSTRUCTIONS, config_map_key};
-use opslab_types::{Challenge, ChallengeInstance, CheckRun};
+use opslab_types::{CatalogSource, Challenge, ChallengeInstance, CheckRun};
 
 pub type Result<T> = std::result::Result<T, kube::Error>;
 
@@ -23,6 +23,17 @@ pub trait Cluster: Send + Sync {
     /// Deletes an instance; deleting a missing one is not an error.
     async fn delete_instance(&self, name: &str) -> Result<()>;
     async fn create_check_run(&self, run: &CheckRun) -> Result<CheckRun>;
+    /// Every instance, of every user.
+    async fn instances(&self) -> Result<Vec<ChallengeInstance>>;
+    async fn catalog_sources(&self) -> Result<Vec<CatalogSource>>;
+    async fn create_catalog_source(&self, source: &CatalogSource) -> Result<CatalogSource>;
+    /// Deletes a catalog source; its challenges and their instances go with
+    /// it (D43). Deleting a missing one is not an error.
+    async fn delete_catalog_source(&self, name: &str) -> Result<()>;
+    /// Creates a challenge, or replaces the spec of an existing one.
+    async fn put_challenge(&self, challenge: &Challenge) -> Result<Challenge>;
+    /// Deletes a challenge; its instances go with it (D43).
+    async fn delete_challenge(&self, name: &str) -> Result<()>;
 }
 
 /// The real cluster.
@@ -98,6 +109,61 @@ impl Cluster for Kube {
             .create(&PostParams::default(), run)
             .await
     }
+
+    async fn instances(&self) -> Result<Vec<ChallengeInstance>> {
+        Ok(self.instances().list(&ListParams::default()).await?.items)
+    }
+
+    async fn catalog_sources(&self) -> Result<Vec<CatalogSource>> {
+        Ok(Api::<CatalogSource>::all(self.client.clone())
+            .list(&ListParams::default())
+            .await?
+            .items)
+    }
+
+    async fn create_catalog_source(&self, source: &CatalogSource) -> Result<CatalogSource> {
+        Api::<CatalogSource>::all(self.client.clone())
+            .create(&PostParams::default(), source)
+            .await
+    }
+
+    async fn delete_catalog_source(&self, name: &str) -> Result<()> {
+        ignore_not_found(
+            Api::<CatalogSource>::all(self.client.clone())
+                .delete(name, &DeleteParams::background())
+                .await,
+        )
+    }
+
+    async fn put_challenge(&self, challenge: &Challenge) -> Result<Challenge> {
+        let api = Api::<Challenge>::all(self.client.clone());
+        let name = challenge.metadata.name.clone().unwrap_or_default();
+        match api.get_opt(&name).await? {
+            None => api.create(&PostParams::default(), challenge).await,
+            Some(mut existing) => {
+                // Replace the spec only: the operator owns the status and the
+                // owner references (D43).
+                existing.spec = challenge.spec.clone();
+                api.replace(&name, &PostParams::default(), &existing).await
+            }
+        }
+    }
+
+    async fn delete_challenge(&self, name: &str) -> Result<()> {
+        ignore_not_found(
+            Api::<Challenge>::all(self.client.clone())
+                .delete(name, &DeleteParams::background())
+                .await,
+        )
+    }
+}
+
+fn ignore_not_found<T>(result: Result<T>) -> Result<()> {
+    match result {
+        Ok(_) => Ok(()),
+        Err(kube::Error::Api(e)) if e.code == 404 => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
 #[cfg(test)]
@@ -115,6 +181,7 @@ pub mod fake {
         pub instructions: Mutex<BTreeMap<String, String>>,
         pub instances: Mutex<BTreeMap<String, ChallengeInstance>>,
         pub check_runs: Mutex<Vec<CheckRun>>,
+        pub catalog_sources: Mutex<Vec<CatalogSource>>,
     }
 
     #[async_trait]
@@ -163,6 +230,70 @@ pub mod fake {
         async fn create_check_run(&self, run: &CheckRun) -> Result<CheckRun> {
             self.check_runs.lock().unwrap().push(run.clone());
             Ok(run.clone())
+        }
+
+        async fn instances(&self) -> Result<Vec<ChallengeInstance>> {
+            Ok(self.instances.lock().unwrap().values().cloned().collect())
+        }
+
+        async fn catalog_sources(&self) -> Result<Vec<CatalogSource>> {
+            Ok(self.catalog_sources.lock().unwrap().clone())
+        }
+
+        async fn create_catalog_source(&self, source: &CatalogSource) -> Result<CatalogSource> {
+            self.catalog_sources.lock().unwrap().push(source.clone());
+            Ok(source.clone())
+        }
+
+        async fn delete_catalog_source(&self, name: &str) -> Result<()> {
+            // The garbage collector's cascade (D43), done by hand.
+            let owned = |c: &Challenge| {
+                c.spec
+                    .source
+                    .catalog
+                    .as_ref()
+                    .is_some_and(|s| s.source == name)
+            };
+            self.catalog_sources
+                .lock()
+                .unwrap()
+                .retain(|s| s.metadata.name.as_deref() != Some(name));
+            let removed: Vec<String> = self
+                .challenges
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|c| owned(c))
+                .filter_map(|c| c.metadata.name.clone())
+                .collect();
+            for challenge in removed {
+                self.delete_challenge(&challenge).await?;
+            }
+            Ok(())
+        }
+
+        async fn put_challenge(&self, challenge: &Challenge) -> Result<Challenge> {
+            let mut list = self.challenges.lock().unwrap();
+            match list
+                .iter_mut()
+                .find(|c| c.metadata.name == challenge.metadata.name)
+            {
+                Some(existing) => existing.spec = challenge.spec.clone(),
+                None => list.push(challenge.clone()),
+            }
+            Ok(challenge.clone())
+        }
+
+        async fn delete_challenge(&self, name: &str) -> Result<()> {
+            self.challenges
+                .lock()
+                .unwrap()
+                .retain(|c| c.metadata.name.as_deref() != Some(name));
+            self.instances
+                .lock()
+                .unwrap()
+                .retain(|_, i| i.spec.challenge != name);
+            Ok(())
         }
     }
 }
