@@ -17,12 +17,14 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use opslab_types::generated::catalogsources::{
+use brokelabs_types::generated::catalogsources::{
     CatalogSourceSpec, CatalogSourceTrust, CatalogSourceTrustKeyless,
 };
-use opslab_types::generated::challengeinstances::ChallengeInstanceStatusPhase;
-use opslab_types::generated::challenges::{ChallengeSource, ChallengeSourceCatalog, ChallengeSpec};
-use opslab_types::{CatalogSource, Challenge, ChallengeInstance};
+use brokelabs_types::generated::challengeinstances::ChallengeInstanceStatusPhase;
+use brokelabs_types::generated::challenges::{
+    ChallengeSource, ChallengeSourceCatalog, ChallengeSpec,
+};
+use brokelabs_types::{CatalogSource, Challenge, ChallengeInstance};
 
 use crate::app::AppState;
 use crate::auth::AdminUser;
@@ -43,7 +45,7 @@ type Result<T> = std::result::Result<T, ApiError>;
 #[derive(Serialize, Deserialize, ToSchema, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TrustView {
-    /// PEM public keys (cosign or `opslab challenge sign --key`).
+    /// PEM public keys (cosign or `brokelabs challenge sign --key`).
     #[serde(default)]
     pub keys: Vec<String>,
     /// Sigstore keyless identities, e.g. a CI workflow.

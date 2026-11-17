@@ -4,44 +4,44 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use anyhow::{Context, bail};
-use opslab_types::project;
+use brokelabs_types::project;
 
 /// Runtime configuration of the api.
 #[derive(Clone, Debug)]
 pub struct Config {
-    /// Address to listen on (`OPSLAB_LISTEN`, default `0.0.0.0:8080`).
+    /// Address to listen on (`BROKELABS_LISTEN`, default `0.0.0.0:8080`).
     pub listen: SocketAddr,
     /// Directory of the built web UI, served for every non-API path
-    /// (`OPSLAB_WEB_DIR`, optional).
+    /// (`BROKELABS_WEB_DIR`, optional).
     pub web_dir: Option<PathBuf>,
     /// PKCS#8 PEM file of the access token signing key
-    /// (`OPSLAB_SIGNING_KEY_FILE`). Without it, an ephemeral key is generated:
+    /// (`BROKELABS_SIGNING_KEY_FILE`). Without it, an ephemeral key is generated:
     /// tokens then stop verifying when the api restarts.
     pub signing_key_file: Option<PathBuf>,
-    /// Log as JSON lines (`OPSLAB_LOG_FORMAT=json`) instead of human-readable text.
+    /// Log as JSON lines (`BROKELABS_LOG_FORMAT=json`) instead of human-readable text.
     pub log_json: bool,
-    /// PostgreSQL connection URL (`OPSLAB_DATABASE_URL`, required), or a file
-    /// holding it (`OPSLAB_DATABASE_URL_FILE`).
+    /// PostgreSQL connection URL (`BROKELABS_DATABASE_URL`, required), or a file
+    /// holding it (`BROKELABS_DATABASE_URL_FILE`).
     pub database_url: String,
-    /// Namespace of ChallengeInstances and CheckRuns (`OPSLAB_INSTANCES_NAMESPACE`).
+    /// Namespace of ChallengeInstances and CheckRuns (`BROKELABS_INSTANCES_NAMESPACE`).
     pub instances_namespace: String,
     /// Namespace of the platform, holding inline package files
-    /// (`OPSLAB_SYSTEM_NAMESPACE`, default `opslab-system`).
+    /// (`BROKELABS_SYSTEM_NAMESPACE`, default `brokelabs-system`).
     pub system_namespace: String,
-    /// Public URL of the gateway, as browsers reach it (`OPSLAB_GATEWAY_URL`,
-    /// e.g. `https://gw.opslab.example.org`).
+    /// Public URL of the gateway, as browsers reach it (`BROKELABS_GATEWAY_URL`,
+    /// e.g. `https://gw.brokelabs.example.org`).
     pub gateway_url: String,
     /// Origins allowed to send state-changing requests with the session
-    /// cookie (`OPSLAB_ALLOWED_ORIGINS`, comma-separated, e.g. the public URL
+    /// cookie (`BROKELABS_ALLOWED_ORIGINS`, comma-separated, e.g. the public URL
     /// of the platform). Empty disables the check (development only).
     pub allowed_origins: Vec<String>,
-    /// Session cookies are `Secure` (`OPSLAB_COOKIE_SECURE`, default true;
+    /// Session cookies are `Secure` (`BROKELABS_COOKIE_SECURE`, default true;
     /// browsers accept secure cookies on http://localhost).
     pub cookie_secure: bool,
-    /// Solo mode user (`OPSLAB_SOLO_USERNAME`, default `admin`).
+    /// Solo mode user (`BROKELABS_SOLO_USERNAME`, default `admin`).
     pub solo_username: String,
-    /// Solo mode password (`OPSLAB_SOLO_PASSWORD_FILE` or
-    /// `OPSLAB_SOLO_PASSWORD`). When set, it is authoritative: the user's
+    /// Solo mode password (`BROKELABS_SOLO_PASSWORD_FILE` or
+    /// `BROKELABS_SOLO_PASSWORD`). When set, it is authoritative: the user's
     /// password is reset to it at startup.
     pub solo_password: Option<String>,
 }
@@ -61,43 +61,43 @@ impl Config {
                 })
                 .transpose()
         };
-        let listen = get("OPSLAB_LISTEN").unwrap_or_else(|| "0.0.0.0:8080".into());
-        let database_url = match read_file("OPSLAB_DATABASE_URL_FILE")? {
+        let listen = get("BROKELABS_LISTEN").unwrap_or_else(|| "0.0.0.0:8080".into());
+        let database_url = match read_file("BROKELABS_DATABASE_URL_FILE")? {
             Some(url) => url,
-            None => get("OPSLAB_DATABASE_URL").unwrap_or_default(),
+            None => get("BROKELABS_DATABASE_URL").unwrap_or_default(),
         };
         if database_url.is_empty() {
-            bail!("OPSLAB_DATABASE_URL (or OPSLAB_DATABASE_URL_FILE) is required");
+            bail!("BROKELABS_DATABASE_URL (or BROKELABS_DATABASE_URL_FILE) is required");
         }
         let gateway_url =
-            get("OPSLAB_GATEWAY_URL").unwrap_or_else(|| "http://localhost:8081".into());
+            get("BROKELABS_GATEWAY_URL").unwrap_or_else(|| "http://localhost:8081".into());
         if !(gateway_url.starts_with("http://") || gateway_url.starts_with("https://")) {
-            bail!("OPSLAB_GATEWAY_URL must be an http(s) URL, got {gateway_url:?}");
+            bail!("BROKELABS_GATEWAY_URL must be an http(s) URL, got {gateway_url:?}");
         }
         Ok(Self {
             listen: listen
                 .parse()
-                .with_context(|| format!("OPSLAB_LISTEN: invalid address {listen:?}"))?,
-            web_dir: get("OPSLAB_WEB_DIR").map(PathBuf::from),
-            signing_key_file: get("OPSLAB_SIGNING_KEY_FILE").map(PathBuf::from),
-            log_json: get("OPSLAB_LOG_FORMAT").as_deref() == Some("json"),
+                .with_context(|| format!("BROKELABS_LISTEN: invalid address {listen:?}"))?,
+            web_dir: get("BROKELABS_WEB_DIR").map(PathBuf::from),
+            signing_key_file: get("BROKELABS_SIGNING_KEY_FILE").map(PathBuf::from),
+            log_json: get("BROKELABS_LOG_FORMAT").as_deref() == Some("json"),
             database_url,
-            instances_namespace: get("OPSLAB_INSTANCES_NAMESPACE")
+            instances_namespace: get("BROKELABS_INSTANCES_NAMESPACE")
                 .unwrap_or_else(|| project::INSTANCES_NAMESPACE.into()),
-            system_namespace: get("OPSLAB_SYSTEM_NAMESPACE")
+            system_namespace: get("BROKELABS_SYSTEM_NAMESPACE")
                 .unwrap_or_else(|| format!("{}-system", project::NAME)),
             gateway_url: gateway_url.trim_end_matches('/').to_string(),
-            allowed_origins: get("OPSLAB_ALLOWED_ORIGINS")
+            allowed_origins: get("BROKELABS_ALLOWED_ORIGINS")
                 .unwrap_or_default()
                 .split(',')
                 .map(|o| o.trim().trim_end_matches('/').to_string())
                 .filter(|o| !o.is_empty())
                 .collect(),
-            cookie_secure: get("OPSLAB_COOKIE_SECURE").as_deref() != Some("false"),
-            solo_username: get("OPSLAB_SOLO_USERNAME").unwrap_or_else(|| "admin".into()),
-            solo_password: match read_file("OPSLAB_SOLO_PASSWORD_FILE")? {
+            cookie_secure: get("BROKELABS_COOKIE_SECURE").as_deref() != Some("false"),
+            solo_username: get("BROKELABS_SOLO_USERNAME").unwrap_or_else(|| "admin".into()),
+            solo_password: match read_file("BROKELABS_SOLO_PASSWORD_FILE")? {
                 Some(p) => Some(p),
-                None => get("OPSLAB_SOLO_PASSWORD"),
+                None => get("BROKELABS_SOLO_PASSWORD"),
             },
         })
     }
@@ -133,8 +133,8 @@ mod tests {
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
-        vars.entry("OPSLAB_DATABASE_URL".into())
-            .or_insert_with(|| "postgres://localhost/opslab".into());
+        vars.entry("BROKELABS_DATABASE_URL".into())
+            .or_insert_with(|| "postgres://localhost/brokelabs".into());
         Config::from_lookup(|k| vars.get(k).cloned())
     }
 
@@ -143,26 +143,26 @@ mod tests {
         let c = config(&[]).unwrap();
         assert_eq!(c.listen.port(), 8080);
         assert!(c.web_dir.is_none() && c.signing_key_file.is_none() && !c.log_json);
-        assert_eq!(c.instances_namespace, "opslab-instances");
-        assert_eq!(c.system_namespace, "opslab-system");
+        assert_eq!(c.instances_namespace, "brokelabs-instances");
+        assert_eq!(c.system_namespace, "brokelabs-system");
         assert!(c.cookie_secure && c.allowed_origins.is_empty());
     }
 
     #[test]
     fn rejects_invalid_values() {
-        assert!(config(&[("OPSLAB_LISTEN", "localhost")]).is_err());
-        assert!(config(&[("OPSLAB_GATEWAY_URL", "gw.example.org")]).is_err());
-        assert!(config(&[("OPSLAB_DATABASE_URL", "")]).is_err());
+        assert!(config(&[("BROKELABS_LISTEN", "localhost")]).is_err());
+        assert!(config(&[("BROKELABS_GATEWAY_URL", "gw.example.org")]).is_err());
+        assert!(config(&[("BROKELABS_DATABASE_URL", "")]).is_err());
     }
 
     #[test]
     fn terminal_urls_use_websockets() {
-        let c = config(&[("OPSLAB_GATEWAY_URL", "https://gw.example.org/")]).unwrap();
+        let c = config(&[("BROKELABS_GATEWAY_URL", "https://gw.example.org/")]).unwrap();
         assert_eq!(
             c.terminal_url("t"),
             "wss://gw.example.org/v1/terminal?token=t"
         );
-        let c = config(&[("OPSLAB_ALLOWED_ORIGINS", "https://a.org/, https://b.org")]).unwrap();
+        let c = config(&[("BROKELABS_ALLOWED_ORIGINS", "https://a.org/, https://b.org")]).unwrap();
         assert_eq!(c.allowed_origins, ["https://a.org", "https://b.org"]);
     }
 }

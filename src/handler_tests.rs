@@ -1,14 +1,14 @@
 //! End-to-end tests of the handlers, against PostgreSQL (skipped without
-//! `OPSLAB_TEST_DATABASE_URL`) and an in-memory cluster.
+//! `BROKELABS_TEST_DATABASE_URL`) and an in-memory cluster.
 
 use std::sync::Arc;
 
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
+use brokelabs_auth::Verifier;
+use brokelabs_types::{Challenge, ChallengeInstance, CheckRun};
 use http_body_util::BodyExt;
-use opslab_auth::Verifier;
-use opslab_types::{Challenge, ChallengeInstance, CheckRun};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -18,11 +18,11 @@ use crate::{auth, db, events};
 
 fn challenge() -> Challenge {
     serde_json::from_value(json!({
-        "apiVersion": "opslab.io/v1alpha1",
+        "apiVersion": "brokelabs.io/v1alpha1",
         "kind": "Challenge",
         "metadata": {"name": "hello"},
         "spec": {"source": {"inline": {"package": {
-            "apiVersion": "opslab.io/v1alpha1", "kind": "ChallengePackage",
+            "apiVersion": "brokelabs.io/v1alpha1", "kind": "ChallengePackage",
             "metadata": {"name": "hello", "version": "0.1.0"},
             "spec": {"title": "Hello", "summary": "s", "category": "linux-hardening", "difficulty": "easy",
                      "machines": [{"name": "box", "runtime": "pod", "image": "x"}],
@@ -31,7 +31,7 @@ fn challenge() -> Challenge {
         "status": {
             "runnable": true, "digest": "sha256:x",
             "package": {
-                "apiVersion": "opslab.io/v1alpha1", "kind": "ChallengePackage",
+                "apiVersion": "brokelabs.io/v1alpha1", "kind": "ChallengePackage",
                 "metadata": {"name": "hello", "version": "0.1.0"},
                 "spec": {"title": "Hello", "summary": "Say hello.", "category": "linux-hardening", "difficulty": "easy",
                          "estimatedTime": "15m0s",
@@ -52,7 +52,7 @@ impl Client {
         let mut req = Request::builder()
             .method(method)
             .uri(uri)
-            .header(header::ORIGIN, "http://opslab.test");
+            .header(header::ORIGIN, "http://brokelabs.test");
         if let Some(c) = &self.cookie {
             req = req.header(header::COOKIE, c);
         }
@@ -142,7 +142,7 @@ async fn cross_origin_writes_are_rejected() {
         return;
     };
     let req = Request::post("/api/v1/auth/login")
-        .header(header::ORIGIN, "http://evil.inst.opslab.test")
+        .header(header::ORIGIN, "http://evil.inst.brokelabs.test")
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(
             json!({"username": "admin", "password": "pw"}).to_string(),
@@ -239,7 +239,7 @@ async fn play_a_challenge() {
         .unwrap()
         .verify(token)
         .unwrap();
-    assert_eq!(claims.grant.instance, format!("opslab-instances/{id}"));
+    assert_eq!(claims.grant.instance, format!("brokelabs-instances/{id}"));
     assert_eq!(claims.grant.machine, "box");
     assert_eq!(
         c.send("POST", &terminal, Some(json!({"machine": "other"})))
@@ -314,10 +314,10 @@ async fn c_user(state: &AppState) -> uuid::Uuid {
         .id
 }
 
-fn catalog_source() -> opslab_types::CatalogSource {
+fn catalog_source() -> brokelabs_types::CatalogSource {
     let perms = json!({"runtimes": ["vm"], "cpu": "1", "memory": "1Gi", "egress": "none"});
     serde_json::from_value(json!({
-        "apiVersion": "opslab.io/v1alpha1",
+        "apiVersion": "brokelabs.io/v1alpha1",
         "kind": "CatalogSource",
         "metadata": {"name": "official"},
         "spec": {"ref": "ghcr.io/x/catalog:latest", "trust": {"keyless": [{"issuer": "https://i", "subjectRegExp": ".*"}]}},

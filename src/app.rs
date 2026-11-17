@@ -9,7 +9,7 @@ use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Json};
 use axum::routing::get;
-use opslab_auth::Signer;
+use brokelabs_auth::Signer;
 use serde::Serialize;
 use sqlx::PgPool;
 use tower_http::services::{ServeDir, ServeFile};
@@ -34,10 +34,7 @@ pub struct AppState {
 
 #[derive(OpenApi)]
 #[openapi(
-    info(
-        title = "opslab api",
-        description = "Platform API of opslab (working name)."
-    ),
+    info(title = "brokelabs api", description = "Platform API of BrokeLabs."),
     components(schemas(crate::views::Event))
 )]
 struct ApiDoc;
@@ -93,7 +90,7 @@ struct VersionInfo {
     responses((status = 200, description = "Version of the api", body = VersionInfo)))]
 async fn version() -> Json<VersionInfo> {
     Json(VersionInfo {
-        name: opslab_auth::ISSUER.trim_end_matches("-api"),
+        name: brokelabs_auth::ISSUER.trim_end_matches("-api"),
         version: env!("CARGO_PKG_VERSION"),
     })
 }
@@ -107,9 +104,9 @@ async fn jwks(State(state): State<AppState>) -> impl IntoResponse {
 #[cfg(test)]
 pub fn test_state(db: PgPool, cluster: Arc<dyn Cluster>) -> AppState {
     let config = Config::from_env_map(&[
-        ("OPSLAB_DATABASE_URL", "postgres://localhost/unused"),
-        ("OPSLAB_GATEWAY_URL", "http://gw.test"),
-        ("OPSLAB_ALLOWED_ORIGINS", "http://opslab.test"),
+        ("BROKELABS_DATABASE_URL", "postgres://localhost/unused"),
+        ("BROKELABS_GATEWAY_URL", "http://gw.test"),
+        ("BROKELABS_ALLOWED_ORIGINS", "http://brokelabs.test"),
     ])
     .unwrap();
     AppState {
@@ -161,7 +158,7 @@ mod tests {
         let (status, body) = get(router(state(), None), "/api/v1/version").await;
         assert_eq!(status, StatusCode::OK);
         let v: serde_json::Value = serde_json::from_str(&body).unwrap();
-        assert_eq!(v["name"], "opslab");
+        assert_eq!(v["name"], "brokelabs");
         assert_eq!(v["version"], env!("CARGO_PKG_VERSION"));
     }
 
@@ -190,7 +187,7 @@ mod tests {
     #[tokio::test]
     async fn serves_the_web_ui_as_a_single_page_app() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("index.html"), "<html>opslab</html>").unwrap();
+        std::fs::write(dir.path().join("index.html"), "<html>brokelabs</html>").unwrap();
         std::fs::write(dir.path().join("app.js"), "console.log(1)").unwrap();
 
         let (status, body) = get(router(state(), Some(dir.path())), "/app.js").await;
@@ -199,7 +196,7 @@ mod tests {
         let (status, body) = get(router(state(), Some(dir.path())), "/challenges/ssh-101").await;
         assert_eq!(
             (status, body.as_str()),
-            (StatusCode::OK, "<html>opslab</html>")
+            (StatusCode::OK, "<html>brokelabs</html>")
         );
         // API routes still win.
         let (_, body) = get(router(state(), Some(dir.path())), "/healthz").await;

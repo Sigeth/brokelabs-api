@@ -1,6 +1,6 @@
-//! opslab api: the platform backend.
+//! BrokeLabs api: the platform backend.
 //!
-//! `opslab-api --openapi` prints the OpenAPI document and exits (used to
+//! `brokelabs-api --openapi` prints the OpenAPI document and exits (used to
 //! generate the web UI's TypeScript client).
 
 mod admin;
@@ -20,7 +20,7 @@ mod handler_tests;
 use std::sync::Arc;
 
 use anyhow::Context;
-use opslab_auth::Signer;
+use brokelabs_auth::Signer;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
@@ -44,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
             Signer::from_pkcs8_pem(&pem)?
         }
         None => {
-            tracing::warn!("OPSLAB_SIGNING_KEY_FILE is not set: using an ephemeral signing key");
+            tracing::warn!("BROKELABS_SIGNING_KEY_FILE is not set: using an ephemeral signing key");
             Signer::generate()?
         }
     };

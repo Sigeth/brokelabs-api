@@ -6,14 +6,14 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum_extra::extract::CookieJar;
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
-use kube::Resource;
-use opslab_auth::{AccessGrant, AccessKind, DEFAULT_TTL};
-use opslab_types::generated::challengeinstances::{
+use brokelabs_auth::{AccessGrant, AccessKind, DEFAULT_TTL};
+use brokelabs_types::generated::challengeinstances::{
     ChallengeInstanceOwner, ChallengeInstanceSpec, ChallengeInstanceStatusPhase,
 };
-use opslab_types::generated::checkruns::CheckRunSpec;
-use opslab_types::{ChallengeInstance, CheckRun};
+use brokelabs_types::generated::checkruns::CheckRunSpec;
+use brokelabs_types::{ChallengeInstance, CheckRun};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
+use kube::Resource;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use uuid::Uuid;

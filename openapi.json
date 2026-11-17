@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "opslab api",
-    "description": "Platform API of opslab (working name).",
+    "title": "brokelabs api",
+    "description": "Platform API of BrokeLabs.",
     "license": {
       "name": ""
     },
@@ -1587,7 +1587,7 @@
             "items": {
               "type": "string"
             },
-            "description": "PEM public keys (cosign or `opslab challenge sign --key`)."
+            "description": "PEM public keys (cosign or `brokelabs challenge sign --key`)."
           }
         }
       },

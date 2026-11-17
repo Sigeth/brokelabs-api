@@ -323,7 +323,7 @@ pub fn is_unique_violation(err: &sqlx::Error) -> bool {
 
 #[cfg(test)]
 pub mod testing {
-    //! Tests needing PostgreSQL run when `OPSLAB_TEST_DATABASE_URL` is set
+    //! Tests needing PostgreSQL run when `BROKELABS_TEST_DATABASE_URL` is set
     //! (the workspace pipeline starts a database), and are skipped otherwise.
 
     use sqlx::postgres::{PgPool, PgPoolOptions};
@@ -331,8 +331,8 @@ pub mod testing {
 
     /// A fresh, migrated database, or None when no test database is configured.
     pub async fn database() -> Option<PgPool> {
-        let Ok(url) = std::env::var("OPSLAB_TEST_DATABASE_URL") else {
-            eprintln!("OPSLAB_TEST_DATABASE_URL is not set: skipping a database test");
+        let Ok(url) = std::env::var("BROKELABS_TEST_DATABASE_URL") else {
+            eprintln!("BROKELABS_TEST_DATABASE_URL is not set: skipping a database test");
             return None;
         };
         let admin = PgPoolOptions::new()

@@ -1,5 +1,5 @@
 [package]
-name = "opslab-api"
+name = "brokelabs-api"
 version = "0.1.0"
 edition = "2024"
 
@@ -13,8 +13,8 @@ base64 = "0.23"
 futures = "0.3"
 k8s-openapi = { version = "0.29", default-features = false, features = ["std", "v1_34"] }
 kube = { version = "5", default-features = false, features = ["client", "runtime", "rustls-tls", "ring"] }
-opslab-auth = { git = "https://github.com/Sigeth/opslab-core-rs", tag = "v0.7.0", version = "0.1" }
-opslab-types = { git = "https://github.com/Sigeth/opslab-core-rs", tag = "v0.7.0", version = "0.1" }
+brokelabs-auth = { git = "https://github.com/Sigeth/brokelabs-core-rs", tag = "v0.8.0", version = "0.1" }
+brokelabs-types = { git = "https://github.com/Sigeth/brokelabs-core-rs", tag = "v0.8.0", version = "0.1" }
 rand = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

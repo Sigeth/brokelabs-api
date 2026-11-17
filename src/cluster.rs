@@ -2,11 +2,11 @@
 //! check runs) as custom resources and reads what the operator reports (D2).
 
 use async_trait::async_trait;
+use brokelabs_types::conventions::{DEFAULT_INSTRUCTIONS, config_map_key};
+use brokelabs_types::{CatalogSource, Challenge, ChallengeInstance, CheckRun};
 use k8s_openapi::api::core::v1::ConfigMap;
 use kube::api::{DeleteParams, ListParams, PostParams};
 use kube::{Api, Client};
-use opslab_types::conventions::{DEFAULT_INSTRUCTIONS, config_map_key};
-use opslab_types::{CatalogSource, Challenge, ChallengeInstance, CheckRun};
 
 pub type Result<T> = std::result::Result<T, kube::Error>;
 

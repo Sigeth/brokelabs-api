@@ -10,12 +10,12 @@ use std::time::Duration;
 
 use axum::extract::State;
 use axum::response::sse::{self, KeepAlive, Sse};
+use brokelabs_types::generated::challengeinstances::ChallengeInstanceStatusPhase;
+use brokelabs_types::generated::checkruns::CheckRunStatusPhase;
+use brokelabs_types::{ChallengeInstance, CheckRun};
 use futures::{Stream, StreamExt, TryStreamExt};
 use kube::runtime::{WatchStreamExt, watcher};
 use kube::{Api, Client};
-use opslab_types::generated::challengeinstances::ChallengeInstanceStatusPhase;
-use opslab_types::generated::checkruns::CheckRunStatusPhase;
-use opslab_types::{ChallengeInstance, CheckRun};
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 use uuid::Uuid;

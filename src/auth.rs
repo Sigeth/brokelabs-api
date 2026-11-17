@@ -20,7 +20,7 @@ use crate::db::{self, User};
 use crate::error::ApiError;
 
 /// Name of the session cookie (host-only, so never sent to env web UIs).
-pub const SESSION_COOKIE: &str = "opslab_session";
+pub const SESSION_COOKIE: &str = "brokelabs_session";
 /// Lifetime of a session.
 pub const SESSION_TTL: Duration = Duration::days(7);
 
@@ -108,7 +108,7 @@ pub async fn bootstrap_solo(
         Some(p) => p,
         None => {
             generated = random_token(15);
-            tracing::warn!(username, password = %generated, "solo user created with a generated password: set OPSLAB_SOLO_PASSWORD_FILE to choose it");
+            tracing::warn!(username, password = %generated, "solo user created with a generated password: set BROKELABS_SOLO_PASSWORD_FILE to choose it");
             &generated
         }
     };

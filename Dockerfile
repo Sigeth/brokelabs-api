@@ -8,10 +8,10 @@ COPY migrations migrations
 COPY src src
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
-    cargo build --release && cp target/release/opslab-api /opslab-api
+    cargo build --release && cp target/release/brokelabs-api /brokelabs-api
 
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /opslab-api /opslab-api
+COPY --from=build /brokelabs-api /brokelabs-api
 USER 65532:65532
 EXPOSE 8080
-ENTRYPOINT ["/opslab-api"]
+ENTRYPOINT ["/brokelabs-api"]

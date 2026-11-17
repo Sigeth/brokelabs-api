@@ -5,9 +5,9 @@ use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use opslab_types::Challenge;
-use opslab_types::generated::challenges::ChallengeStatusPackage;
-use opslab_types::{
+use brokelabs_types::Challenge;
+use brokelabs_types::generated::challenges::ChallengeStatusPackage;
+use brokelabs_types::{
     ChallengeInstance, generated::challengeinstances::ChallengeInstanceStatusPhase,
 };
 
