@@ -2,7 +2,7 @@
 
 The platform backend of BrokeLabs. It handles users, classrooms, the challenge catalog, instance lifecycle and scoring, and it mints the short-lived access tokens the gateway verifies.
 
-> Status: M1. Solo mode (one local admin account), catalog, instances, terminals, checks and scores.
+> Status: M5 in progress. Solo and organization modes, local accounts with roles and user management, catalog and marketplace, instances, terminals, checks and scores.
 
 The api is the source of truth for **people and progress** (PostgreSQL). Kubernetes is the source of truth for **running things**: the api creates `ChallengeInstance` and `CheckRun` resources and watches what the operator reports. It never calls the operator directly.
 
@@ -36,8 +36,9 @@ The api is the source of truth for **people and progress** (PostgreSQL). Kuberne
 | `BROKELABS_GATEWAY_URL` | `http://localhost:8081` | Public URL of the gateway, as browsers reach it |
 | `BROKELABS_ALLOWED_ORIGINS` | none | Comma-separated origins allowed to send state-changing requests (CSRF). Set it to the platform URL. |
 | `BROKELABS_COOKIE_SECURE` | `true` | `Secure` session cookies (browsers accept them on http://localhost) |
-| `BROKELABS_SOLO_USERNAME` | `admin` | Solo mode account, created on first start |
-| `BROKELABS_SOLO_PASSWORD_FILE` (or `BROKELABS_SOLO_PASSWORD`) | generated, logged once | Solo mode password. When set, it is authoritative. |
+| `BROKELABS_MODE` | `solo` | `solo` (one person) or `organization` (accounts, roles and classrooms) |
+| `BROKELABS_ADMIN_USERNAME` | `admin` | First admin account, created when there is no user (the only one in solo mode) |
+| `BROKELABS_ADMIN_PASSWORD_FILE` (or `BROKELABS_ADMIN_PASSWORD`) | generated, logged once | First admin's password. When set, it is authoritative. |
 | `RUST_LOG` | `info,tower_http=debug` | Log filter |
 
 ## Development

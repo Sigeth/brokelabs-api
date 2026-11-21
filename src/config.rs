@@ -38,12 +38,26 @@ pub struct Config {
     /// Session cookies are `Secure` (`BROKELABS_COOKIE_SECURE`, default true;
     /// browsers accept secure cookies on http://localhost).
     pub cookie_secure: bool,
-    /// Solo mode user (`BROKELABS_SOLO_USERNAME`, default `admin`).
-    pub solo_username: String,
-    /// Solo mode password (`BROKELABS_SOLO_PASSWORD_FILE` or
-    /// `BROKELABS_SOLO_PASSWORD`). When set, it is authoritative: the user's
+    /// How the install is used (`BROKELABS_MODE`: `solo`, the default, or
+    /// `organization`).
+    pub mode: Mode,
+    /// First admin, created when there is no user yet
+    /// (`BROKELABS_ADMIN_USERNAME`, default `admin`). In solo mode, the only user.
+    pub admin_username: String,
+    /// Password of the first admin (`BROKELABS_ADMIN_PASSWORD_FILE` or
+    /// `BROKELABS_ADMIN_PASSWORD`). When set, it is authoritative: the user's
     /// password is reset to it at startup.
-    pub solo_password: Option<String>,
+    pub admin_password: Option<String>,
+}
+
+/// How an install is used (D12).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    /// One person running it for themselves: no user management or classrooms.
+    Solo,
+    /// A school or team: accounts, roles and classrooms.
+    Organization,
 }
 
 impl Config {
@@ -94,10 +108,15 @@ impl Config {
                 .filter(|o| !o.is_empty())
                 .collect(),
             cookie_secure: get("BROKELABS_COOKIE_SECURE").as_deref() != Some("false"),
-            solo_username: get("BROKELABS_SOLO_USERNAME").unwrap_or_else(|| "admin".into()),
-            solo_password: match read_file("BROKELABS_SOLO_PASSWORD_FILE")? {
+            mode: match get("BROKELABS_MODE").as_deref() {
+                None | Some("solo") => Mode::Solo,
+                Some("organization") => Mode::Organization,
+                Some(other) => bail!("BROKELABS_MODE must be solo or organization, got {other:?}"),
+            },
+            admin_username: get("BROKELABS_ADMIN_USERNAME").unwrap_or_else(|| "admin".into()),
+            admin_password: match read_file("BROKELABS_ADMIN_PASSWORD_FILE")? {
                 Some(p) => Some(p),
-                None => get("BROKELABS_SOLO_PASSWORD"),
+                None => get("BROKELABS_ADMIN_PASSWORD"),
             },
         })
     }
@@ -146,6 +165,8 @@ mod tests {
         assert_eq!(c.instances_namespace, "brokelabs-instances");
         assert_eq!(c.system_namespace, "brokelabs-system");
         assert!(c.cookie_secure && c.allowed_origins.is_empty());
+        assert_eq!(c.mode, Mode::Solo);
+        assert_eq!(c.admin_username, "admin");
     }
 
     #[test]
@@ -153,6 +174,11 @@ mod tests {
         assert!(config(&[("BROKELABS_LISTEN", "localhost")]).is_err());
         assert!(config(&[("BROKELABS_GATEWAY_URL", "gw.example.org")]).is_err());
         assert!(config(&[("BROKELABS_DATABASE_URL", "")]).is_err());
+        assert!(config(&[("BROKELABS_MODE", "school")]).is_err());
+        assert_eq!(
+            config(&[("BROKELABS_MODE", "organization")]).unwrap().mode,
+            Mode::Organization
+        );
     }
 
     #[test]

@@ -25,7 +25,10 @@ pub struct User {
     pub display_name: String,
     pub role: String,
     pub password_hash: Option<String>,
+    pub disabled_at: Option<OffsetDateTime>,
 }
+
+const USER_COLUMNS: &str = "id, username, display_name, role, password_hash, disabled_at";
 
 pub async fn count_users(db: &PgPool) -> Result<i64> {
     sqlx::query_scalar("SELECT count(*) FROM users")
@@ -34,9 +37,9 @@ pub async fn count_users(db: &PgPool) -> Result<i64> {
 }
 
 pub async fn user_by_name(db: &PgPool, username: &str) -> Result<Option<User>> {
-    sqlx::query_as(
-        "SELECT id, username, display_name, role, password_hash FROM users WHERE username = $1",
-    )
+    sqlx::query_as(AssertSqlSafe(format!(
+        "SELECT {USER_COLUMNS} FROM users WHERE username = $1"
+    )))
     .bind(username)
     .fetch_optional(db)
     .await
@@ -49,10 +52,10 @@ pub async fn create_user(
     role: &str,
     password_hash: &str,
 ) -> Result<User> {
-    sqlx::query_as(
+    sqlx::query_as(AssertSqlSafe(format!(
         "INSERT INTO users (id, username, display_name, role, password_hash) VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, username, display_name, role, password_hash",
-    )
+         RETURNING {USER_COLUMNS}"
+    )))
     .bind(Uuid::new_v4())
     .bind(username)
     .bind(display_name)
@@ -66,6 +69,101 @@ pub async fn set_password(db: &PgPool, user: Uuid, password_hash: &str) -> Resul
     sqlx::query("UPDATE users SET password_hash = $2 WHERE id = $1")
         .bind(user)
         .bind(password_hash)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
+pub async fn user_by_id(db: &PgPool, id: Uuid) -> Result<Option<User>> {
+    sqlx::query_as(AssertSqlSafe(format!(
+        "SELECT {USER_COLUMNS} FROM users WHERE id = $1"
+    )))
+    .bind(id)
+    .fetch_optional(db)
+    .await
+}
+
+/// A user as the admin sees it.
+#[derive(Clone, Debug, sqlx::FromRow)]
+pub struct UserRow {
+    pub id: Uuid,
+    pub username: String,
+    pub display_name: String,
+    pub role: String,
+    pub disabled_at: Option<OffsetDateTime>,
+    pub created_at: OffsetDateTime,
+    pub last_login_at: Option<OffsetDateTime>,
+    pub score: i64,
+}
+
+const USER_ROW_SELECT: &str =
+    "SELECT u.id, u.username, u.display_name, u.role, u.disabled_at, u.created_at, u.last_login_at,
+        coalesce((SELECT sum(points) FROM solves WHERE user_id = u.id), 0)::bigint AS score
+     FROM users u";
+
+pub async fn list_users(db: &PgPool) -> Result<Vec<UserRow>> {
+    sqlx::query_as(AssertSqlSafe(format!(
+        "{USER_ROW_SELECT} ORDER BY u.username"
+    )))
+    .fetch_all(db)
+    .await
+}
+
+pub async fn user_row(db: &PgPool, id: Uuid) -> Result<Option<UserRow>> {
+    sqlx::query_as(AssertSqlSafe(format!("{USER_ROW_SELECT} WHERE u.id = $1")))
+        .bind(id)
+        .fetch_optional(db)
+        .await
+}
+
+/// Changes the given fields of a user; None leaves a field as it is.
+pub async fn update_user(
+    db: &PgPool,
+    id: Uuid,
+    display_name: Option<&str>,
+    role: Option<&str>,
+    disabled: Option<bool>,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE users SET
+            display_name = coalesce($2, display_name),
+            role = coalesce($3, role),
+            disabled_at = CASE WHEN $4 IS NULL THEN disabled_at
+                               WHEN $4 THEN coalesce(disabled_at, now())
+                               ELSE NULL END
+         WHERE id = $1",
+    )
+    .bind(id)
+    .bind(display_name)
+    .bind(role)
+    .bind(disabled)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// Deletes a user with their sessions, attempts and scores.
+pub async fn delete_user(db: &PgPool, id: Uuid) -> Result<()> {
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
+pub async fn record_login(db: &PgPool, id: Uuid) -> Result<()> {
+    sqlx::query("UPDATE users SET last_login_at = now() WHERE id = $1")
+        .bind(id)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
+/// Ends every session of a user, except `keep` (the caller's own).
+pub async fn delete_sessions(db: &PgPool, user: Uuid, keep: Option<&[u8]>) -> Result<()> {
+    sqlx::query("DELETE FROM sessions WHERE user_id = $1 AND token_hash IS DISTINCT FROM $2")
+        .bind(user)
+        .bind(keep)
         .execute(db)
         .await?;
     Ok(())
@@ -88,9 +186,9 @@ pub async fn create_session(
 
 pub async fn session_user(db: &PgPool, token_hash: &[u8]) -> Result<Option<User>> {
     sqlx::query_as(
-        "SELECT u.id, u.username, u.display_name, u.role, u.password_hash
+        "SELECT u.id, u.username, u.display_name, u.role, u.password_hash, u.disabled_at
          FROM sessions s JOIN users u ON u.id = s.user_id
-         WHERE s.token_hash = $1 AND s.expires_at > now()",
+         WHERE s.token_hash = $1 AND s.expires_at > now() AND u.disabled_at IS NULL",
     )
     .bind(token_hash)
     .fetch_optional(db)

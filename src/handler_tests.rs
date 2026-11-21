@@ -78,7 +78,7 @@ impl Client {
 
 async fn setup() -> Option<(AppState, Arc<FakeCluster>, Client)> {
     let db = db::testing::database().await?;
-    auth::bootstrap_solo(&db, "admin", Some("pw"))
+    auth::bootstrap_admin(&db, "admin", Some("pw"))
         .await
         .unwrap();
     let cluster = Arc::new(FakeCluster::default());
@@ -491,4 +491,182 @@ async fn students_cannot_use_the_marketplace() {
             "{method} {uri}"
         );
     }
+}
+
+async fn try_sign_in(c: &mut Client, username: &str, password: &str) -> StatusCode {
+    c.send(
+        "POST",
+        "/api/v1/auth/login",
+        Some(json!({"username": username, "password": password})),
+    )
+    .await
+    .0
+}
+
+#[tokio::test]
+async fn manage_users() {
+    let Some((state, cluster, mut admin)) = setup().await else {
+        return;
+    };
+    assert_eq!(try_sign_in(&mut admin, "admin", "pw").await, StatusCode::OK);
+
+    // Create a student: the generated password works once shown.
+    let (status, created) = admin
+        .send(
+            "POST",
+            "/api/v1/admin/users",
+            Some(json!({"username": "Alice", "displayName": "Alice A.", "role": "student"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["user"]["username"], "alice");
+    let id = created["user"]["id"].as_str().unwrap().to_string();
+    let password = created["password"].as_str().unwrap().to_string();
+    let (status, _) = admin
+        .send(
+            "POST",
+            "/api/v1/admin/users",
+            Some(json!({"username": "alice", "role": "student"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let (status, _) = admin
+        .send(
+            "POST",
+            "/api/v1/admin/users",
+            Some(json!({"username": "bob", "role": "root"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let mut alice = Client {
+        app: router(state.clone(), None),
+        cookie: None,
+    };
+    assert_eq!(
+        try_sign_in(&mut alice, "alice", &password).await,
+        StatusCode::OK
+    );
+    let (status, _) = alice.send("GET", "/api/v1/admin/users", None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Alice changes her password.
+    let (status, _) = alice
+        .send(
+            "POST",
+            "/api/v1/me/password",
+            Some(json!({"currentPassword": "wrong", "newPassword": "long enough"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = alice
+        .send(
+            "POST",
+            "/api/v1/me/password",
+            Some(json!({"currentPassword": password, "newPassword": "short"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = alice
+        .send(
+            "POST",
+            "/api/v1/me/password",
+            Some(json!({"currentPassword": password, "newPassword": "long enough"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        alice.send("GET", "/api/v1/me", None).await.0,
+        StatusCode::OK
+    );
+
+    // Alice starts an instance; disabling her ends her session and stops it.
+    let (status, _) = alice
+        .send(
+            "POST",
+            "/api/v1/instances",
+            Some(json!({"challenge": "hello"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(cluster.instances.lock().unwrap().len(), 1);
+    let (status, view) = admin
+        .send(
+            "PATCH",
+            &format!("/api/v1/admin/users/{id}"),
+            Some(json!({"disabled": true, "role": "teacher"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    assert_eq!(
+        (view["disabled"].as_bool(), view["role"].as_str()),
+        (Some(true), Some("teacher"))
+    );
+    assert!(cluster.instances.lock().unwrap().is_empty());
+    assert_eq!(
+        alice.send("GET", "/api/v1/me", None).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        try_sign_in(&mut alice, "alice", "long enough").await,
+        StatusCode::FORBIDDEN
+    );
+
+    // Enabled again, with a reset password.
+    admin
+        .send(
+            "PATCH",
+            &format!("/api/v1/admin/users/{id}"),
+            Some(json!({"disabled": false})),
+        )
+        .await;
+    let (_, reset) = admin
+        .send("POST", &format!("/api/v1/admin/users/{id}/password"), None)
+        .await;
+    let password = reset["password"].as_str().unwrap();
+    assert_eq!(
+        try_sign_in(&mut alice, "alice", "long enough").await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        try_sign_in(&mut alice, "alice", password).await,
+        StatusCode::OK
+    );
+
+    // The admin cannot lock themselves out.
+    let (_, list) = admin.send("GET", "/api/v1/admin/users", None).await;
+    assert_eq!(list.as_array().unwrap().len(), 2);
+    let me = list[0]["id"].as_str().unwrap();
+    for body in [json!({"role": "student"}), json!({"disabled": true})] {
+        let (status, _) = admin
+            .send("PATCH", &format!("/api/v1/admin/users/{me}"), Some(body))
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    let (status, _) = admin
+        .send("DELETE", &format!("/api/v1/admin/users/{me}"), None)
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Deleting Alice.
+    let (status, _) = admin
+        .send("DELETE", &format!("/api/v1/admin/users/{id}"), None)
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        alice.send("GET", "/api/v1/me", None).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (_, list) = admin.send("GET", "/api/v1/admin/users", None).await;
+    assert_eq!(list.as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn settings_need_no_session() {
+    let Some((_, _, mut c)) = setup().await else {
+        return;
+    };
+    let (status, settings) = c.send("GET", "/api/v1/settings", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(settings["mode"], "solo");
 }

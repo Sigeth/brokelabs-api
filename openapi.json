@@ -299,6 +299,258 @@
         }
       }
     },
+    "/api/v1/admin/users": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Every account.",
+        "operationId": "list_users",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserView"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Creates an account with a generated password, returned once.",
+        "operationId": "create_user",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUser"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedUser"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{id}": {
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Deletes an account with its progress and scores, and stops its instances.",
+        "operationId": "delete_user",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Changes a user's display name, role or state. Admins cannot change their\nown role or disable themselves, so there is always an admin left.",
+        "operationId": "update_user",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUser"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{id}/password": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Gives a user a new generated password, returned once, and ends their sessions.",
+        "operationId": "reset_password",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewPassword"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": [
@@ -751,6 +1003,66 @@
         }
       }
     },
+    "/api/v1/me/password": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Changes the signed-in user's password and ends their other sessions.",
+        "operationId": "change_password",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePassword"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "How the platform is set up, for the web UI (no sign-in needed).",
+        "operationId": "settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/version": {
       "get": {
         "tags": [
@@ -951,6 +1263,22 @@
           }
         }
       },
+      "ChangePassword": {
+        "type": "object",
+        "required": [
+          "currentPassword",
+          "newPassword"
+        ],
+        "properties": {
+          "currentPassword": {
+            "type": "string"
+          },
+          "newPassword": {
+            "type": "string",
+            "description": "At least 8 characters."
+          }
+        }
+      },
       "CheckPhase": {
         "type": "string",
         "description": "Lifecycle phase of a check run.",
@@ -1000,6 +1328,46 @@
             "items": {
               "$ref": "#/components/schemas/TaskResultView"
             }
+          }
+        }
+      },
+      "CreateUser": {
+        "type": "object",
+        "required": [
+          "username",
+          "role"
+        ],
+        "properties": {
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Defaults to the username."
+          },
+          "role": {
+            "type": "string",
+            "description": "admin, teacher or student."
+          },
+          "username": {
+            "type": "string",
+            "description": "Lowercase letters, digits, `.`, `_` and `-`, up to 64 characters."
+          }
+        }
+      },
+      "CreatedUser": {
+        "type": "object",
+        "description": "A new account and its generated password, shown once.",
+        "required": [
+          "user",
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserView"
           }
         }
       },
@@ -1372,6 +1740,14 @@
           }
         }
       },
+      "Mode": {
+        "type": "string",
+        "description": "How an install is used (D12).",
+        "enum": [
+          "solo",
+          "organization"
+        ]
+      },
       "NewCatalog": {
         "type": "object",
         "description": "A new catalog source.",
@@ -1391,6 +1767,18 @@
           },
           "trust": {
             "$ref": "#/components/schemas/TrustView"
+          }
+        }
+      },
+      "NewPassword": {
+        "type": "object",
+        "description": "A new generated password, shown once.",
+        "required": [
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
           }
         }
       },
@@ -1476,6 +1864,18 @@
               "type": "string"
             },
             "description": "Runtimes of its machines (pod, vm...)."
+          }
+        }
+      },
+      "Settings": {
+        "type": "object",
+        "description": "How the platform is set up.",
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/Mode"
           }
         }
       },
@@ -1588,6 +1988,79 @@
               "type": "string"
             },
             "description": "PEM public keys (cosign or `brokelabs challenge sign --key`)."
+          }
+        }
+      },
+      "UpdateUser": {
+        "type": "object",
+        "description": "Fields to change; missing fields are kept.",
+        "properties": {
+          "disabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "A disabled user cannot sign in; their sessions and instances end."
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "UserView": {
+        "type": "object",
+        "description": "An account, as admins see it.",
+        "required": [
+          "id",
+          "username",
+          "displayName",
+          "role",
+          "disabled",
+          "createdAt",
+          "score"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lastLoginAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "role": {
+            "type": "string",
+            "description": "admin, teacher or student."
+          },
+          "score": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Points of every solved task."
+          },
+          "username": {
+            "type": "string"
           }
         }
       },

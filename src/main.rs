@@ -12,6 +12,7 @@ mod db;
 mod error;
 mod events;
 mod routes;
+mod users;
 mod views;
 
 #[cfg(test)]
@@ -53,7 +54,12 @@ async fn main() -> anyhow::Result<()> {
     let db = db::connect(&config.database_url)
         .await
         .context("connecting to the database")?;
-    auth::bootstrap_solo(&db, &config.solo_username, config.solo_password.as_deref()).await?;
+    auth::bootstrap_admin(
+        &db,
+        &config.admin_username,
+        config.admin_password.as_deref(),
+    )
+    .await?;
 
     let client = kube::Client::try_default()
         .await

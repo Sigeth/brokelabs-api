@@ -26,6 +26,12 @@ pub struct Me {
     pub score: i64,
 }
 
+/// How the platform is set up.
+#[derive(Serialize, ToSchema)]
+pub struct Settings {
+    pub mode: crate::config::Mode,
+}
+
 #[derive(Deserialize, ToSchema)]
 pub struct LoginRequest {
     pub username: String,

@@ -29,6 +29,8 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(login))
         .routes(routes!(logout))
         .routes(routes!(me))
+        .routes(routes!(settings))
+        .merge(crate::users::router())
         .routes(routes!(list_challenges))
         .routes(routes!(get_challenge))
         .routes(routes!(list_instances, start_instance))
@@ -63,7 +65,13 @@ async fn login(
     let (Some(user), true) = (user, valid) else {
         return Err(ApiError::Unauthorized);
     };
+    if user.disabled_at.is_some() {
+        return Err(ApiError::Forbidden(
+            "this account is disabled: ask an administrator".into(),
+        ));
+    }
     let cookie = auth::login(&state.db, &user, state.config.cookie_secure).await?;
+    db::record_login(&state.db, user.id).await?;
     let me = me_of(&state, user).await?;
     Ok((jar.add(cookie), Json(me)))
 }
@@ -90,6 +98,15 @@ async fn me_of(state: &AppState, user: db::User) -> Result<Me> {
     responses((status = 200, body = Me), (status = 401, body = ErrorBody)))]
 async fn me(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Result<Json<Me>> {
     Ok(Json(me_of(&state, user).await?))
+}
+
+/// How the platform is set up, for the web UI (no sign-in needed).
+#[utoipa::path(get, path = "/api/v1/settings", tag = "meta",
+    responses((status = 200, body = Settings)))]
+async fn settings(State(state): State<AppState>) -> Json<Settings> {
+    Json(Settings {
+        mode: state.config.mode,
+    })
 }
 
 /// Installed challenges, with the user's progress.

@@ -48,7 +48,7 @@ pub fn random_token(bytes: usize) -> String {
     URL_SAFE_NO_PAD.encode(buf)
 }
 
-fn token_hash(token: &str) -> Vec<u8> {
+pub fn token_hash(token: &str) -> Vec<u8> {
     Sha256::digest(token.as_bytes()).to_vec()
 }
 
@@ -82,9 +82,9 @@ pub async fn logout(db: &PgPool, jar: &CookieJar) -> Result<Cookie<'static>, Api
         .build())
 }
 
-/// Creates the solo user on first start, and resets its password to the
-/// configured one when there is one.
-pub async fn bootstrap_solo(
+/// Creates the first admin (the solo user in solo mode) when there is no user,
+/// and resets its password to the configured one when there is one.
+pub async fn bootstrap_admin(
     db: &PgPool,
     username: &str,
     password: Option<&str>,
@@ -94,13 +94,13 @@ pub async fn bootstrap_solo(
             let current = user.password_hash.as_deref().unwrap_or_default();
             if !verify_password(password, current) {
                 db::set_password(db, user.id, &hash_password(password)?).await?;
-                tracing::info!(username, "solo user password reset to the configured one");
+                tracing::info!(username, "admin password reset to the configured one");
             }
         }
         return Ok(());
     }
     if db::count_users(db).await? > 0 {
-        tracing::info!(username, "users exist: not creating the solo user");
+        tracing::info!(username, "users exist: not creating the first admin");
         return Ok(());
     }
     let generated;
@@ -108,7 +108,7 @@ pub async fn bootstrap_solo(
         Some(p) => p,
         None => {
             generated = random_token(15);
-            tracing::warn!(username, password = %generated, "solo user created with a generated password: set BROKELABS_SOLO_PASSWORD_FILE to choose it");
+            tracing::warn!(username, password = %generated, "first admin created with a generated password: set BROKELABS_ADMIN_PASSWORD_FILE to choose it");
             &generated
         }
     };
@@ -120,7 +120,7 @@ pub async fn bootstrap_solo(
         &hash_password(password)?,
     )
     .await?;
-    tracing::info!(username, "solo user created");
+    tracing::info!(username, "first admin created");
     Ok(())
 }
 
@@ -142,11 +142,19 @@ impl FromRequestParts<AppState> for CurrentUser {
     }
 }
 
-/// The signed-in user, who must be an admin: marketplace and catalog sources.
+/// The signed-in user, who must be an admin: marketplace, catalog sources and
+/// users.
 pub struct AdminUser(pub User);
 
-/// The role that may install challenges and manage catalog sources.
+/// Manages the platform (marketplace, catalog sources, users), and can do
+/// everything a teacher does (D55).
 pub const ADMIN_ROLE: &str = "admin";
+/// Runs classrooms.
+pub const TEACHER_ROLE: &str = "teacher";
+/// Plays challenges.
+pub const STUDENT_ROLE: &str = "student";
+/// Every role.
+pub const ROLES: [&str; 3] = [ADMIN_ROLE, TEACHER_ROLE, STUDENT_ROLE];
 
 impl FromRequestParts<AppState> for AdminUser {
     type Rejection = ApiError;
