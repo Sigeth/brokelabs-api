@@ -15,9 +15,9 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use openidconnect::core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata};
 use openidconnect::url::form_urlencoded;
 use openidconnect::{
-    AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet, EndpointNotSet,
-    EndpointSet, IssuerUrl, Nonce, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope,
-    TokenResponse,
+    AsyncHttpClient, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet,
+    EndpointNotSet, EndpointSet, HttpClientError, HttpRequest, HttpResponse, IssuerUrl, Nonce,
+    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
 };
 use serde::Deserialize;
 use tokio::sync::RwLock;
@@ -64,7 +64,7 @@ type Client = CoreClient<
 pub struct Oidc {
     pub config: OidcConfig,
     redirect: RedirectUrl,
-    http: reqwest::Client,
+    http: ProviderHttp,
     metadata: RwLock<Option<(Instant, CoreProviderMetadata)>>,
 }
 
@@ -98,7 +98,13 @@ impl Oidc {
         Ok(Self {
             config: config.clone(),
             redirect: RedirectUrl::new(format!("{public_url}{CALLBACK_PATH}"))?,
-            http: http.build()?,
+            http: ProviderHttp {
+                http: http.build()?,
+                backchannel: match &config.backchannel_url {
+                    None => None,
+                    Some(url) => Some((origin(&config.issuer)?, origin(url)?)),
+                },
+            },
             metadata: RwLock::new(None),
         })
     }
@@ -186,6 +192,51 @@ impl Oidc {
             email,
             groups: groups(&payload, &self.config.groups_claim),
         })
+    }
+}
+
+/// HTTP client of the provider's endpoints, through the back channel when
+/// one is configured.
+struct ProviderHttp {
+    http: reqwest::Client,
+    /// Origins (issuer, back channel) when the api reaches the provider at
+    /// another address than browsers do.
+    backchannel: Option<(String, String)>,
+}
+
+impl<'c> AsyncHttpClient<'c> for ProviderHttp {
+    type Error = HttpClientError<reqwest::Error>;
+    type Future = std::pin::Pin<
+        Box<dyn Future<Output = Result<HttpResponse, Self::Error>> + Send + Sync + 'c>,
+    >;
+
+    fn call(&'c self, mut request: HttpRequest) -> Self::Future {
+        if let Some((from, to)) = &self.backchannel
+            && let Some(uri) = rebase(&request.uri().to_string(), from, to)
+            && let Ok(uri) = uri.parse()
+        {
+            *request.uri_mut() = uri;
+        }
+        self.http.call(request)
+    }
+}
+
+/// The origin (scheme, host and port) of a URL.
+fn origin(url: &str) -> anyhow::Result<String> {
+    let parsed =
+        openidconnect::url::Url::parse(url).with_context(|| format!("invalid URL {url:?}"))?;
+    match parsed.origin() {
+        o @ openidconnect::url::Origin::Tuple(..) => Ok(o.ascii_serialization()),
+        _ => anyhow::bail!("{url:?} has no origin"),
+    }
+}
+
+/// `url` with its origin `from` replaced by `to`, if it has that origin.
+fn rebase(url: &str, from: &str, to: &str) -> Option<String> {
+    let rest = url.strip_prefix(from)?;
+    match rest.is_empty() || rest.starts_with(['/', '?']) {
+        true => Some(format!("{to}{rest}")),
+        false => None,
     }
 }
 
@@ -494,6 +545,28 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn back_channel() {
+        let from = origin("http://localhost:5556/dex").unwrap();
+        let to = origin("http://dex.brokelabs-system.svc:5556").unwrap();
+        assert_eq!(
+            (from.as_str(), to.as_str()),
+            (
+                "http://localhost:5556",
+                "http://dex.brokelabs-system.svc:5556"
+            )
+        );
+        assert_eq!(
+            rebase("http://localhost:5556/dex/keys", &from, &to).as_deref(),
+            Some("http://dex.brokelabs-system.svc:5556/dex/keys")
+        );
+        // Other origins (and look-alike hosts) are left alone.
+        assert_eq!(rebase("http://localhost:55567/x", &from, &to), None);
+        assert_eq!(rebase("https://other.test/x", &from, &to), None);
+        assert_eq!(origin("https://sso.test").unwrap(), "https://sso.test");
+        assert!(origin("not a url").is_err());
+    }
+
     fn config(admin: &[&str], teacher: &[&str]) -> OidcConfig {
         OidcConfig {
             issuer: "https://sso.test".into(),
@@ -505,6 +578,7 @@ mod tests {
             admin_groups: admin.iter().map(|s| s.to_string()).collect(),
             teacher_groups: teacher.iter().map(|s| s.to_string()).collect(),
             ca_file: None,
+            backchannel_url: None,
         }
     }
 

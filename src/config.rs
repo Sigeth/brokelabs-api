@@ -80,6 +80,11 @@ pub struct OidcConfig {
     /// PEM file of extra CA certificates to trust for the provider
     /// (`BROKELABS_OIDC_CA_FILE`), e.g. a school's private CA.
     pub ca_file: Option<PathBuf>,
+    /// Where the api reaches the provider when that differs from the issuer
+    /// browsers use (`BROKELABS_OIDC_BACKCHANNEL_URL`), e.g. its in-cluster
+    /// Service when the public name does not resolve or loop back inside the
+    /// cluster: the api's requests to the issuer's origin go to this origin.
+    pub backchannel_url: Option<String>,
 }
 
 impl OidcConfig {
@@ -194,6 +199,7 @@ impl Config {
                     admin_groups: list(get("BROKELABS_OIDC_ADMIN_GROUPS")),
                     teacher_groups: list(get("BROKELABS_OIDC_TEACHER_GROUPS")),
                     ca_file: get("BROKELABS_OIDC_CA_FILE").map(PathBuf::from),
+                    backchannel_url: get("BROKELABS_OIDC_BACKCHANNEL_URL"),
                 }),
             },
             admin_username: get("BROKELABS_ADMIN_USERNAME").unwrap_or_else(|| "admin".into()),
