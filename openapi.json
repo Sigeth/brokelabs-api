@@ -749,6 +749,29 @@
         }
       }
     },
+    "/api/v1/classrooms": {
+      "get": {
+        "tags": [
+          "classrooms"
+        ],
+        "summary": "Classrooms the user joined, with their assignments and the user's progress.",
+        "operationId": "my_classrooms",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StudentClassroom"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/events": {
       "get": {
         "tags": [
@@ -1058,6 +1081,154 @@
         }
       }
     },
+    "/api/v1/invites/{code}": {
+      "get": {
+        "tags": [
+          "classrooms"
+        ],
+        "summary": "What an invite link leads to. No sign-in needed.",
+        "operationId": "get_invite",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "Invite code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteView"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invites/{code}/join": {
+      "post": {
+        "tags": [
+          "classrooms"
+        ],
+        "summary": "Joins the classroom of an invite link.",
+        "operationId": "join",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "Invite code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Joined"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invites/{code}/signup": {
+      "post": {
+        "tags": [
+          "classrooms"
+        ],
+        "summary": "Creates a student account through an invite link, joins the classroom\nand signs in.",
+        "operationId": "sign_up",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "Invite code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignUp"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me": {
       "get": {
         "tags": [
@@ -1147,6 +1318,408 @@
         }
       }
     },
+    "/api/v1/teach/classrooms": {
+      "get": {
+        "tags": [
+          "teach"
+        ],
+        "summary": "Classrooms the teacher manages (every classroom for admins).",
+        "operationId": "list_teaching",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClassroomView"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "teach"
+        ],
+        "summary": "Creates a classroom owned by the teacher, with its invite link on.",
+        "operationId": "create_classroom",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewClassroom"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teach/classrooms/{id}": {
+      "get": {
+        "tags": [
+          "teach"
+        ],
+        "summary": "A classroom with its members and assignments.",
+        "operationId": "get_teaching",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Classroom ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "teach"
+        ],
+        "summary": "Deletes a classroom with its memberships and assignments. Accounts and\nscores are kept.",
+        "operationId": "delete_classroom",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Classroom ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "teach"
+        ],
+        "summary": "Renames a classroom, turns its invite link on or off, or (admins) gives\nit to another teacher.",
+        "operationId": "update_classroom",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Classroom ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassroomChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teach/classrooms/{id}/assignments/{challenge}": {
+      "put": {
+        "tags": [
+          "teach"
+        ],
+        "summary": "Assigns an installed challenge to a classroom, or changes its dates.",
+        "operationId": "put_assignment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Classroom ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "challenge",
+            "in": "path",
+            "description": "Challenge name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignmentDates"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "teach"
+        ],
+        "summary": "Removes an assignment (solves are kept).",
+        "operationId": "delete_assignment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Classroom ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "challenge",
+            "in": "path",
+            "description": "Challenge name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teach/classrooms/{id}/invite": {
+      "post": {
+        "tags": [
+          "teach"
+        ],
+        "summary": "Replaces the invite code: the old link stops working.",
+        "operationId": "rotate_invite",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Classroom ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomView"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teach/classrooms/{id}/members/{user}": {
+      "delete": {
+        "tags": [
+          "teach"
+        ],
+        "summary": "Removes a member from a classroom (their account and scores are kept).",
+        "operationId": "remove_member",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Classroom ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/version": {
       "get": {
         "tags": [
@@ -1171,6 +1744,59 @@
   },
   "components": {
     "schemas": {
+      "AssignmentDates": {
+        "type": "object",
+        "description": "Dates of an assignment; both optional.",
+        "properties": {
+          "dueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "opensAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "AssignmentView": {
+        "type": "object",
+        "description": "A challenge assigned to a classroom.",
+        "required": [
+          "challenge"
+        ],
+        "properties": {
+          "challenge": {
+            "type": "string"
+          },
+          "dueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "opensAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The challenge's title, when it is still installed."
+          }
+        }
+      },
       "CatalogView": {
         "type": "object",
         "description": "A catalog source and its last sync.",
@@ -1412,6 +2038,119 @@
             "items": {
               "$ref": "#/components/schemas/TaskResultView"
             }
+          }
+        }
+      },
+      "ClassroomChange": {
+        "type": "object",
+        "description": "Fields to change; missing fields are kept.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inviteEnabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ownerId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "New owner, a teacher or an admin (admins only)."
+          }
+        }
+      },
+      "ClassroomDetail": {
+        "type": "object",
+        "description": "A classroom with its members and assignments, for its teacher.",
+        "required": [
+          "classroom",
+          "members",
+          "assignments"
+        ],
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssignmentView"
+            }
+          },
+          "classroom": {
+            "$ref": "#/components/schemas/ClassroomView"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberView"
+            }
+          }
+        }
+      },
+      "ClassroomView": {
+        "type": "object",
+        "description": "A classroom, as its teacher sees it.",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "ownerId",
+          "ownerName",
+          "inviteCode",
+          "inviteEnabled",
+          "members",
+          "assignments",
+          "createdAt"
+        ],
+        "properties": {
+          "assignments": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "inviteCode": {
+            "type": "string",
+            "description": "`ABCD-EFGH`: the invite link is `/join/<code>`."
+          },
+          "inviteEnabled": {
+            "type": "boolean",
+            "description": "When false, the invite link does not work (members stay)."
+          },
+          "members": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ownerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ownerName": {
+            "type": "string"
           }
         }
       },
@@ -1695,6 +2434,40 @@
           }
         }
       },
+      "InviteView": {
+        "type": "object",
+        "description": "What an invite link leads to (no sign-in needed).",
+        "required": [
+          "classroom",
+          "teacher"
+        ],
+        "properties": {
+          "classroom": {
+            "type": "string"
+          },
+          "teacher": {
+            "type": "string"
+          }
+        }
+      },
+      "Joined": {
+        "type": "object",
+        "description": "The result of joining through an invite link.",
+        "required": [
+          "classroomId",
+          "joined"
+        ],
+        "properties": {
+          "classroomId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "joined": {
+            "type": "boolean",
+            "description": "False when the user was a member already."
+          }
+        }
+      },
       "KeylessView": {
         "type": "object",
         "description": "A Sigstore keyless identity.",
@@ -1829,6 +2602,39 @@
           }
         }
       },
+      "MemberView": {
+        "type": "object",
+        "description": "A member of a classroom.",
+        "required": [
+          "id",
+          "username",
+          "displayName",
+          "joinedAt"
+        ],
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "joinedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastLoginAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
       "Mode": {
         "type": "string",
         "description": "How an install is used (D12).",
@@ -1856,6 +2662,23 @@
           },
           "trust": {
             "$ref": "#/components/schemas/TrustView"
+          }
+        }
+      },
+      "NewClassroom": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
           }
         }
       },
@@ -1979,6 +2802,26 @@
           }
         }
       },
+      "SignUp": {
+        "type": "object",
+        "required": [
+          "displayName",
+          "username",
+          "password"
+        ],
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "description": "At least 8 characters."
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
       "SsoSettings": {
         "type": "object",
         "description": "The single sign-on provider.",
@@ -2006,6 +2849,85 @@
           "challenge": {
             "type": "string",
             "description": "Name of the challenge."
+          }
+        }
+      },
+      "StudentAssignment": {
+        "type": "object",
+        "description": "An assignment, as a student sees it, with their progress.",
+        "required": [
+          "challenge",
+          "done",
+          "late"
+        ],
+        "properties": {
+          "challenge": {
+            "type": "string"
+          },
+          "done": {
+            "type": "boolean",
+            "description": "Every task is solved."
+          },
+          "dueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "late": {
+            "type": "boolean",
+            "description": "A task was solved after the deadline (it still counts, D58)."
+          },
+          "opensAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "summary": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ChallengeSummary",
+                "description": "None when the challenge is no longer installed."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "StudentClassroom": {
+        "type": "object",
+        "description": "A classroom the student joined.",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "teacher",
+          "assignments"
+        ],
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StudentAssignment"
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "teacher": {
+            "type": "string"
           }
         }
       },

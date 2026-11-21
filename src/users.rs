@@ -112,7 +112,7 @@ pub struct ChangePassword {
     pub new_password: String,
 }
 
-fn validate_username(name: &str) -> Result<()> {
+pub fn validate_username(name: &str) -> Result<()> {
     let valid = !name.is_empty()
         && name.len() <= 64
         && name
@@ -127,13 +127,22 @@ fn validate_username(name: &str) -> Result<()> {
     }
 }
 
-fn validate_display_name(name: &str) -> Result<&str> {
+pub fn validate_display_name(name: &str) -> Result<&str> {
     let name = name.trim();
     match (1..=100).contains(&name.chars().count()) {
         true => Ok(name),
         false => Err(ApiError::BadRequest(
             "a display name has 1 to 100 characters".into(),
         )),
+    }
+}
+
+pub fn validate_password(password: &str) -> Result<()> {
+    match password.chars().count() >= MIN_PASSWORD_LENGTH {
+        true => Ok(()),
+        false => Err(ApiError::BadRequest(format!(
+            "a password has at least {MIN_PASSWORD_LENGTH} characters"
+        ))),
     }
 }
 
@@ -292,8 +301,24 @@ async fn delete_user(
     let user = db::user_by_id(&state.db, id)
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("no user {id}")))?;
-    stop_instances(&state, id, "user deleted").await?;
-    db::delete_user(&state.db, id).await?;
+    // Listed first: the delete removes the attempts with the user.
+    let running = db::active_attempts(&state.db, id).await?;
+    db::delete_user(&state.db, id).await.map_err(|e| {
+        match db::violates(&e, "classrooms_owner_id_fkey") {
+            true => ApiError::Conflict(format!(
+                "{} owns classrooms: give them to another teacher or delete them first",
+                user.username
+            )),
+            false => e.into(),
+        }
+    })?;
+    // After the delete: a refused delete leaves the user's instances running.
+    for attempt in running {
+        state
+            .cluster
+            .delete_instance(&attempt.instance_name)
+            .await?;
+    }
     tracing::info!(
         admin = admin.username,
         username = user.username,
@@ -354,11 +379,7 @@ async fn change_password(
     ) {
         return Err(ApiError::Forbidden("the current password is wrong".into()));
     }
-    if req.new_password.chars().count() < MIN_PASSWORD_LENGTH {
-        return Err(ApiError::BadRequest(format!(
-            "a password has at least {MIN_PASSWORD_LENGTH} characters"
-        )));
-    }
+    validate_password(&req.new_password)?;
     db::set_password(&state.db, user.id, &auth::hash_password(&req.new_password)?).await?;
     let current = jar.get(SESSION_COOKIE).map(|c| auth::token_hash(c.value()));
     db::delete_sessions(&state.db, user.id, current.as_deref()).await?;

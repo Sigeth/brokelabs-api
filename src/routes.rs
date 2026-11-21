@@ -32,6 +32,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(settings))
         .merge(crate::users::router())
         .merge(crate::oidc::router())
+        .merge(crate::classrooms::router())
         .routes(routes!(list_challenges))
         .routes(routes!(get_challenge))
         .routes(routes!(list_instances, start_instance))
@@ -84,7 +85,7 @@ async fn logout(State(state): State<AppState>, jar: CookieJar) -> Result<(Cookie
     Ok((jar.add(removal), StatusCode::NO_CONTENT))
 }
 
-async fn me_of(state: &AppState, user: db::User) -> Result<Me> {
+pub async fn me_of(state: &AppState, user: db::User) -> Result<Me> {
     Ok(Me {
         score: db::score(&state.db, user.id).await?,
         sso: user.oidc_subject.is_some(),

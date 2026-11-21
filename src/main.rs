@@ -6,6 +6,7 @@
 mod admin;
 mod app;
 mod auth;
+mod classrooms;
 mod cluster;
 mod config;
 mod db;

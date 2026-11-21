@@ -670,3 +670,298 @@ async fn settings_need_no_session() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(settings["mode"], "solo");
 }
+
+/// The state in organization mode (classrooms on).
+fn organization(mut state: AppState) -> AppState {
+    state.config = Arc::new(
+        crate::config::Config::from_env_map(&[
+            ("BROKELABS_DATABASE_URL", "postgres://localhost/unused"),
+            ("BROKELABS_GATEWAY_URL", "http://gw.test"),
+            ("BROKELABS_ALLOWED_ORIGINS", "http://brokelabs.test"),
+            ("BROKELABS_MODE", "organization"),
+        ])
+        .unwrap(),
+    );
+    state
+}
+
+fn client(state: &AppState) -> Client {
+    Client {
+        app: router(state.clone(), None),
+        cookie: None,
+    }
+}
+
+/// Creates an account through the admin and signs it in.
+async fn account(state: &AppState, admin: &mut Client, username: &str, role: &str) -> Client {
+    let (status, created) = admin
+        .send(
+            "POST",
+            "/api/v1/admin/users",
+            Some(json!({"username": username, "role": role})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let mut c = client(state);
+    let password = created["password"].as_str().unwrap();
+    assert_eq!(
+        try_sign_in(&mut c, username, password).await,
+        StatusCode::OK
+    );
+    c
+}
+
+#[tokio::test]
+async fn run_a_classroom() {
+    let Some((state, _, _)) = setup().await else {
+        return;
+    };
+    let state = organization(state);
+    let mut admin = client(&state);
+    assert_eq!(try_sign_in(&mut admin, "admin", "pw").await, StatusCode::OK);
+    let mut teacher = account(&state, &mut admin, "tess", "teacher").await;
+    let mut other = account(&state, &mut admin, "otto", "teacher").await;
+
+    // The teacher creates a classroom: its invite link is on.
+    let (status, class) = teacher
+        .send(
+            "POST",
+            "/api/v1/teach/classrooms",
+            Some(json!({"name": " Class 1A "})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{class}");
+    assert_eq!(
+        (class["name"].as_str(), class["inviteEnabled"].as_bool()),
+        (Some("Class 1A"), Some(true))
+    );
+    let id = class["id"].as_str().unwrap().to_string();
+    let code = class["inviteCode"].as_str().unwrap().to_string();
+    assert_eq!(code.len(), 9);
+
+    // Anyone with the link sees what it leads to, and signs up through it.
+    let mut student = client(&state);
+    let (status, invite) = student
+        .send(
+            "GET",
+            &format!("/api/v1/invites/{}", code.to_lowercase()),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (invite["classroom"].as_str(), invite["teacher"].as_str()),
+        (Some("Class 1A"), Some("tess"))
+    );
+    let (status, me) = student
+        .send(
+            "POST",
+            &format!("/api/v1/invites/{code}/signup"),
+            Some(json!({"displayName": "Sam", "username": "sam", "password": "long enough"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{me}");
+    assert_eq!(me["role"], "student");
+    let (status, _) = client(&state)
+        .send(
+            "POST",
+            &format!("/api/v1/invites/{code}/signup"),
+            Some(json!({"displayName": "Sam 2", "username": "sam", "password": "long enough"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // An existing user joins once.
+    let (_, joined) = other
+        .send("POST", &format!("/api/v1/invites/{code}/join"), None)
+        .await;
+    assert_eq!(joined["joined"], true);
+    let (_, joined) = other
+        .send("POST", &format!("/api/v1/invites/{code}/join"), None)
+        .await;
+    assert_eq!(joined["joined"], false);
+
+    // Assignments: an installed challenge, with a deadline already past.
+    let (status, _) = teacher
+        .send(
+            "PUT",
+            &format!("/api/v1/teach/classrooms/{id}/assignments/nope"),
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = teacher
+        .send(
+            "PUT",
+            &format!("/api/v1/teach/classrooms/{id}/assignments/hello"),
+            Some(json!({"opensAt": "2026-02-01T00:00:00Z", "dueAt": "2026-01-01T00:00:00Z"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, a) = teacher
+        .send(
+            "PUT",
+            &format!("/api/v1/teach/classrooms/{id}/assignments/hello"),
+            Some(json!({"dueAt": "2026-01-01T00:00:00Z"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{a}");
+    assert_eq!(a["title"], "Hello");
+
+    // The student sees it, and a solve after the deadline is late.
+    let (_, mine) = student.send("GET", "/api/v1/classrooms", None).await;
+    assert_eq!(mine[0]["teacher"], "tess");
+    assert_eq!(mine[0]["assignments"][0]["summary"]["title"], "Hello");
+    assert_eq!(mine[0]["assignments"][0]["late"], false);
+    sqlx::query("INSERT INTO solves (user_id, challenge, task, points) SELECT id, 'hello', 't1', 10 FROM users WHERE username = 'sam'")
+        .execute(&state.db)
+        .await
+        .unwrap();
+    let (_, mine) = student.send("GET", "/api/v1/classrooms", None).await;
+    assert_eq!(
+        (
+            mine[0]["assignments"][0]["late"].as_bool(),
+            mine[0]["assignments"][0]["done"].as_bool()
+        ),
+        (Some(true), Some(false))
+    );
+
+    // The teacher's view.
+    let (_, detail) = teacher
+        .send("GET", &format!("/api/v1/teach/classrooms/{id}"), None)
+        .await;
+    assert_eq!(detail["members"].as_array().unwrap().len(), 2);
+    assert_eq!(detail["assignments"][0]["challenge"], "hello");
+
+    // Other teachers and students cannot manage it.
+    let (status, _) = other
+        .send("GET", &format!("/api/v1/teach/classrooms/{id}"), None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (_, list) = other.send("GET", "/api/v1/teach/classrooms", None).await;
+    assert!(list.as_array().unwrap().is_empty());
+    let (status, _) = student.send("GET", "/api/v1/teach/classrooms", None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = teacher
+        .send(
+            "PATCH",
+            &format!("/api/v1/teach/classrooms/{id}"),
+            Some(json!({"ownerId": detail["members"][0]["id"]})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Turning the link off, then rotating it.
+    teacher
+        .send(
+            "PATCH",
+            &format!("/api/v1/teach/classrooms/{id}"),
+            Some(json!({"inviteEnabled": false})),
+        )
+        .await;
+    let (status, _) = client(&state)
+        .send("GET", &format!("/api/v1/invites/{code}"), None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    teacher
+        .send(
+            "PATCH",
+            &format!("/api/v1/teach/classrooms/{id}"),
+            Some(json!({"inviteEnabled": true})),
+        )
+        .await;
+    let (_, rotated) = teacher
+        .send(
+            "POST",
+            &format!("/api/v1/teach/classrooms/{id}/invite"),
+            None,
+        )
+        .await;
+    let new_code = rotated["inviteCode"].as_str().unwrap();
+    assert_ne!(new_code, code);
+    let (status, _) = client(&state)
+        .send("GET", &format!("/api/v1/invites/{code}"), None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = client(&state)
+        .send("GET", &format!("/api/v1/invites/{new_code}"), None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // A teacher owning classrooms is not deleted until they are given away.
+    let (_, users) = admin.send("GET", "/api/v1/admin/users", None).await;
+    let uid = |name: &str| {
+        users
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|u| u["username"] == name)
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    let (status, _) = admin
+        .send(
+            "DELETE",
+            &format!("/api/v1/admin/users/{}", uid("tess")),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let (status, _) = admin
+        .send(
+            "PATCH",
+            &format!("/api/v1/teach/classrooms/{id}"),
+            Some(json!({"ownerId": uid("sam")})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, moved) = admin
+        .send(
+            "PATCH",
+            &format!("/api/v1/teach/classrooms/{id}"),
+            Some(json!({"ownerId": uid("otto")})),
+        )
+        .await;
+    assert_eq!(
+        (status, moved["ownerName"].as_str()),
+        (StatusCode::OK, Some("otto"))
+    );
+    let (status, _) = admin
+        .send(
+            "DELETE",
+            &format!("/api/v1/admin/users/{}", uid("tess")),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // Removing a member, then the classroom.
+    let (status, _) = other
+        .send(
+            "DELETE",
+            &format!("/api/v1/teach/classrooms/{id}/members/{}", uid("sam")),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, mine) = student.send("GET", "/api/v1/classrooms", None).await;
+    assert!(mine.as_array().unwrap().is_empty());
+    let (status, _) = other
+        .send("DELETE", &format!("/api/v1/teach/classrooms/{id}"), None)
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn classrooms_are_off_in_solo_mode() {
+    let Some((_, _, mut c)) = setup().await else {
+        return;
+    };
+    assert_eq!(try_sign_in(&mut c, "admin", "pw").await, StatusCode::OK);
+    let (status, _) = c.send("GET", "/api/v1/teach/classrooms", None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, mine) = c.send("GET", "/api/v1/classrooms", None).await;
+    assert_eq!((status, mine), (StatusCode::OK, json!([])));
+}

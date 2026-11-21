@@ -168,6 +168,27 @@ impl FromRequestParts<AppState> for AdminUser {
     }
 }
 
+/// The signed-in user, who must be a teacher or an admin: classrooms.
+pub struct TeacherUser(pub User);
+
+impl TeacherUser {
+    pub fn is_admin(&self) -> bool {
+        self.0.role == ADMIN_ROLE
+    }
+}
+
+impl FromRequestParts<AppState> for TeacherUser {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, ApiError> {
+        let CurrentUser(user) = CurrentUser::from_request_parts(parts, state).await?;
+        if user.role != ADMIN_ROLE && user.role != TEACHER_ROLE {
+            return Err(ApiError::Forbidden("only teachers can do this".into()));
+        }
+        Ok(TeacherUser(user))
+    }
+}
+
 /// Rejects state-changing requests sent by other origins (CSRF). Pages on
 /// `*.inst.<domain>` are same-site with the platform, so SameSite cookies
 /// alone do not stop them.

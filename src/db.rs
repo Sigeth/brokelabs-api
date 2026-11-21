@@ -6,6 +6,8 @@ use sqlx::types::Json;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+pub mod classrooms;
+
 pub type Result<T> = std::result::Result<T, sqlx::Error>;
 
 /// Connects and applies the migrations.
@@ -501,10 +503,11 @@ pub struct Solve {
     pub challenge: String,
     pub task: String,
     pub points: i32,
+    pub solved_at: OffsetDateTime,
 }
 
 pub async fn solves(db: &PgPool, user: Uuid) -> Result<Vec<Solve>> {
-    sqlx::query_as("SELECT challenge, task, points FROM solves WHERE user_id = $1")
+    sqlx::query_as("SELECT challenge, task, points, solved_at FROM solves WHERE user_id = $1")
         .bind(user)
         .fetch_all(db)
         .await
