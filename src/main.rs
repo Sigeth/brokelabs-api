@@ -11,6 +11,7 @@ mod config;
 mod db;
 mod error;
 mod events;
+mod oidc;
 mod routes;
 mod users;
 mod views;
@@ -69,12 +70,24 @@ async fn main() -> anyhow::Result<()> {
         instances_namespace: config.instances_namespace.clone(),
         system_namespace: config.system_namespace.clone(),
     };
+    let oidc = match &config.oidc {
+        Some(o) => {
+            tracing::info!(
+                issuer = o.issuer,
+                roles_from_groups = o.manages_roles(),
+                "single sign-on enabled"
+            );
+            Some(Arc::new(oidc::Oidc::new(o, &config.public_url)?))
+        }
+        None => None,
+    };
     let state = AppState {
         signer: Arc::new(signer),
         db,
         cluster: Arc::new(cluster),
         hub: events::Hub::default(),
         config: Arc::new(config.clone()),
+        oidc,
     };
     tokio::spawn(events::watch(state.clone(), client));
 

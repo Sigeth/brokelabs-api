@@ -602,6 +602,90 @@
         }
       }
     },
+    "/api/v1/auth/oidc/callback": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Where the provider sends the browser back: signs the user in, creating\ntheir account at the first sign-in.",
+        "operationId": "oidc_callback",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "description": "Set by the provider when the sign-in failed or was refused.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Signed in: a page continuing to the next path"
+          },
+          "303": {
+            "description": "Back to the login page with an error"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/oidc/login": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Starts a single sign-on: redirects the browser to the provider.",
+        "operationId": "oidc_login",
+        "parameters": [
+          {
+            "name": "next",
+            "in": "query",
+            "description": "Local path to open after signing in (default `/`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Redirect to the provider"
+          },
+          "404": {
+            "description": "Single sign-on is not configured"
+          }
+        }
+      }
+    },
     "/api/v1/challenges": {
       "get": {
         "tags": [
@@ -1716,7 +1800,8 @@
           "username",
           "displayName",
           "role",
-          "score"
+          "score",
+          "sso"
         ],
         "properties": {
           "displayName": {
@@ -1734,6 +1819,10 @@
             "type": "integer",
             "format": "int64",
             "description": "Points of every solved task."
+          },
+          "sso": {
+            "type": "boolean",
+            "description": "Signs in with single sign-on (no local password)."
           },
           "username": {
             "type": "string"
@@ -1876,6 +1965,35 @@
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/Mode"
+          },
+          "sso": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SsoSettings",
+                "description": "Single sign-on, when configured."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "SsoSettings": {
+        "type": "object",
+        "description": "The single sign-on provider.",
+        "required": [
+          "label",
+          "rolesFromProvider"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Text of the sign-in button."
+          },
+          "rolesFromProvider": {
+            "type": "boolean",
+            "description": "The provider's groups decide roles at every sign-in, so role changes\nmade here are overwritten."
           }
         }
       },
@@ -2026,7 +2144,8 @@
           "role",
           "disabled",
           "createdAt",
-          "score"
+          "score",
+          "sso"
         ],
         "properties": {
           "createdAt": {
@@ -2038,6 +2157,13 @@
           },
           "displayName": {
             "type": "string"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "From the sign-on provider."
           },
           "id": {
             "type": "string",
@@ -2058,6 +2184,10 @@
             "type": "integer",
             "format": "int64",
             "description": "Points of every solved task."
+          },
+          "sso": {
+            "type": "boolean",
+            "description": "Signs in with single sign-on (no local password)."
           },
           "username": {
             "type": "string"

@@ -26,9 +26,12 @@ pub struct User {
     pub role: String,
     pub password_hash: Option<String>,
     pub disabled_at: Option<OffsetDateTime>,
+    /// Set for accounts of the OIDC provider (no local password).
+    pub oidc_subject: Option<String>,
 }
 
-const USER_COLUMNS: &str = "id, username, display_name, role, password_hash, disabled_at";
+const USER_COLUMNS: &str =
+    "id, username, display_name, role, password_hash, disabled_at, oidc_subject";
 
 pub async fn count_users(db: &PgPool) -> Result<i64> {
     sqlx::query_scalar("SELECT count(*) FROM users")
@@ -94,10 +97,13 @@ pub struct UserRow {
     pub created_at: OffsetDateTime,
     pub last_login_at: Option<OffsetDateTime>,
     pub score: i64,
+    pub oidc_subject: Option<String>,
+    pub email: Option<String>,
 }
 
 const USER_ROW_SELECT: &str =
     "SELECT u.id, u.username, u.display_name, u.role, u.disabled_at, u.created_at, u.last_login_at,
+        u.oidc_subject, u.email,
         coalesce((SELECT sum(points) FROM solves WHERE user_id = u.id), 0)::bigint AS score
      FROM users u";
 
@@ -169,6 +175,103 @@ pub async fn delete_sessions(db: &PgPool, user: Uuid, keep: Option<&[u8]>) -> Re
     Ok(())
 }
 
+pub async fn user_by_oidc(db: &PgPool, issuer: &str, subject: &str) -> Result<Option<User>> {
+    sqlx::query_as(AssertSqlSafe(format!(
+        "SELECT {USER_COLUMNS} FROM users WHERE oidc_issuer = $1 AND oidc_subject = $2"
+    )))
+    .bind(issuer)
+    .bind(subject)
+    .fetch_optional(db)
+    .await
+}
+
+/// A new account of the OIDC provider: no password.
+pub struct NewOidcUser<'a> {
+    pub username: &'a str,
+    pub display_name: &'a str,
+    pub role: &'a str,
+    pub issuer: &'a str,
+    pub subject: &'a str,
+    pub email: Option<&'a str>,
+}
+
+pub async fn create_oidc_user(db: &PgPool, u: &NewOidcUser<'_>) -> Result<User> {
+    sqlx::query_as(AssertSqlSafe(format!(
+        "INSERT INTO users (id, username, display_name, role, oidc_issuer, oidc_subject, email)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING {USER_COLUMNS}"
+    )))
+    .bind(Uuid::new_v4())
+    .bind(u.username)
+    .bind(u.display_name)
+    .bind(u.role)
+    .bind(u.issuer)
+    .bind(u.subject)
+    .bind(u.email)
+    .fetch_one(db)
+    .await
+}
+
+/// Records what the provider says at sign-in: the email, and the role when
+/// the provider manages roles.
+pub async fn update_oidc_user(
+    db: &PgPool,
+    id: Uuid,
+    email: Option<&str>,
+    role: Option<&str>,
+) -> Result<User> {
+    sqlx::query_as(AssertSqlSafe(format!(
+        "UPDATE users SET email = coalesce($2, email), role = coalesce($3, role)
+         WHERE id = $1 RETURNING {USER_COLUMNS}"
+    )))
+    .bind(id)
+    .bind(email)
+    .bind(role)
+    .fetch_one(db)
+    .await
+}
+
+/// A sign-in sent to the OIDC provider.
+#[derive(Debug, sqlx::FromRow)]
+pub struct OidcLogin {
+    pub nonce: String,
+    pub pkce_verifier: String,
+    pub next_path: String,
+}
+
+pub async fn create_oidc_login(
+    db: &PgPool,
+    state: &str,
+    nonce: &str,
+    pkce_verifier: &str,
+    next_path: &str,
+) -> Result<()> {
+    // Forget abandoned sign-ins.
+    sqlx::query("DELETE FROM oidc_logins WHERE created_at < now() - interval '10 minutes'")
+        .execute(db)
+        .await?;
+    sqlx::query(
+        "INSERT INTO oidc_logins (state, nonce, pkce_verifier, next_path) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(state)
+    .bind(nonce)
+    .bind(pkce_verifier)
+    .bind(next_path)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// Takes a sign-in back, once, if it is recent.
+pub async fn take_oidc_login(db: &PgPool, state: &str) -> Result<Option<OidcLogin>> {
+    sqlx::query_as(
+        "DELETE FROM oidc_logins WHERE state = $1 AND created_at > now() - interval '10 minutes'
+         RETURNING nonce, pkce_verifier, next_path",
+    )
+    .bind(state)
+    .fetch_optional(db)
+    .await
+}
+
 pub async fn create_session(
     db: &PgPool,
     token_hash: &[u8],
@@ -186,7 +289,7 @@ pub async fn create_session(
 
 pub async fn session_user(db: &PgPool, token_hash: &[u8]) -> Result<Option<User>> {
     sqlx::query_as(
-        "SELECT u.id, u.username, u.display_name, u.role, u.password_hash, u.disabled_at
+        "SELECT u.id, u.username, u.display_name, u.role, u.password_hash, u.disabled_at, u.oidc_subject
          FROM sessions s JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = $1 AND s.expires_at > now() AND u.disabled_at IS NULL",
     )
@@ -412,6 +515,11 @@ pub async fn score(db: &PgPool, user: Uuid) -> Result<i64> {
         .bind(user)
         .fetch_one(db)
         .await
+}
+
+/// True when the error violates the named constraint or unique index.
+pub fn violates(err: &sqlx::Error, constraint: &str) -> bool {
+    matches!(err, sqlx::Error::Database(e) if e.constraint() == Some(constraint))
 }
 
 /// True when the error is a unique constraint violation.

@@ -24,12 +24,27 @@ pub struct Me {
     pub role: String,
     /// Points of every solved task.
     pub score: i64,
+    /// Signs in with single sign-on (no local password).
+    pub sso: bool,
 }
 
 /// How the platform is set up.
 #[derive(Serialize, ToSchema)]
 pub struct Settings {
     pub mode: crate::config::Mode,
+    /// Single sign-on, when configured.
+    pub sso: Option<SsoSettings>,
+}
+
+/// The single sign-on provider.
+#[derive(Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SsoSettings {
+    /// Text of the sign-in button.
+    pub label: String,
+    /// The provider's groups decide roles at every sign-in, so role changes
+    /// made here are overwritten.
+    pub roles_from_provider: bool,
 }
 
 #[derive(Deserialize, ToSchema)]

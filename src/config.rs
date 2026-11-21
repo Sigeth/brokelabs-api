@@ -48,6 +48,56 @@ pub struct Config {
     /// `BROKELABS_ADMIN_PASSWORD`). When set, it is authoritative: the user's
     /// password is reset to it at startup.
     pub admin_password: Option<String>,
+    /// Public URL of the platform, as browsers reach it (`BROKELABS_PUBLIC_URL`,
+    /// default `http://localhost:8080`): OIDC redirects come back to it.
+    pub public_url: String,
+    /// Single sign-on, when `BROKELABS_OIDC_ISSUER` is set.
+    pub oidc: Option<OidcConfig>,
+}
+
+/// An OpenID Connect provider (school SSO: Keycloak, Entra, Google...).
+#[derive(Clone, Debug)]
+pub struct OidcConfig {
+    /// Issuer URL (`BROKELABS_OIDC_ISSUER`).
+    pub issuer: String,
+    /// `BROKELABS_OIDC_CLIENT_ID`.
+    pub client_id: String,
+    /// `BROKELABS_OIDC_CLIENT_SECRET_FILE` or `BROKELABS_OIDC_CLIENT_SECRET`
+    /// (none: a public client, PKCE only).
+    pub client_secret: Option<String>,
+    /// Text of the login button (`BROKELABS_OIDC_LABEL`, default "Single sign-on").
+    pub label: String,
+    /// Scopes requested (`BROKELABS_OIDC_SCOPES`, space-separated, default
+    /// "openid profile email").
+    pub scopes: Vec<String>,
+    /// ID token claim listing the user's groups (`BROKELABS_OIDC_GROUPS_CLAIM`,
+    /// default `groups`; dots reach nested claims, e.g. `realm_access.roles`).
+    pub groups_claim: String,
+    /// Groups giving the admin role (`BROKELABS_OIDC_ADMIN_GROUPS`, comma-separated).
+    pub admin_groups: Vec<String>,
+    /// Groups giving the teacher role (`BROKELABS_OIDC_TEACHER_GROUPS`, comma-separated).
+    pub teacher_groups: Vec<String>,
+    /// PEM file of extra CA certificates to trust for the provider
+    /// (`BROKELABS_OIDC_CA_FILE`), e.g. a school's private CA.
+    pub ca_file: Option<PathBuf>,
+}
+
+impl OidcConfig {
+    /// With admin or teacher groups, the provider decides roles at every
+    /// sign-in. Without, new users are students and admins manage roles.
+    pub fn manages_roles(&self) -> bool {
+        !self.admin_groups.is_empty() || !self.teacher_groups.is_empty()
+    }
+}
+
+/// A comma-separated list, without empty items.
+fn list(value: Option<String>) -> Vec<String> {
+    value
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 /// How an install is used (D12).
@@ -83,6 +133,11 @@ impl Config {
         if database_url.is_empty() {
             bail!("BROKELABS_DATABASE_URL (or BROKELABS_DATABASE_URL_FILE) is required");
         }
+        if let Some(url) = get("BROKELABS_PUBLIC_URL")
+            && !(url.starts_with("http://") || url.starts_with("https://"))
+        {
+            bail!("BROKELABS_PUBLIC_URL must be an http(s) URL, got {url:?}");
+        }
         let gateway_url =
             get("BROKELABS_GATEWAY_URL").unwrap_or_else(|| "http://localhost:8081".into());
         if !(gateway_url.starts_with("http://") || gateway_url.starts_with("https://")) {
@@ -112,6 +167,34 @@ impl Config {
                 None | Some("solo") => Mode::Solo,
                 Some("organization") => Mode::Organization,
                 Some(other) => bail!("BROKELABS_MODE must be solo or organization, got {other:?}"),
+            },
+            public_url: get("BROKELABS_PUBLIC_URL")
+                .unwrap_or_else(|| "http://localhost:8080".into())
+                .trim_end_matches('/')
+                .to_string(),
+            oidc: match get("BROKELABS_OIDC_ISSUER") {
+                None => None,
+                Some(issuer) => Some(OidcConfig {
+                    issuer,
+                    client_id: get("BROKELABS_OIDC_CLIENT_ID").context(
+                        "BROKELABS_OIDC_CLIENT_ID is required with BROKELABS_OIDC_ISSUER",
+                    )?,
+                    client_secret: match read_file("BROKELABS_OIDC_CLIENT_SECRET_FILE")? {
+                        Some(s) => Some(s),
+                        None => get("BROKELABS_OIDC_CLIENT_SECRET"),
+                    },
+                    label: get("BROKELABS_OIDC_LABEL").unwrap_or_else(|| "Single sign-on".into()),
+                    scopes: get("BROKELABS_OIDC_SCOPES")
+                        .unwrap_or_else(|| "openid profile email".into())
+                        .split_whitespace()
+                        .map(String::from)
+                        .collect(),
+                    groups_claim: get("BROKELABS_OIDC_GROUPS_CLAIM")
+                        .unwrap_or_else(|| "groups".into()),
+                    admin_groups: list(get("BROKELABS_OIDC_ADMIN_GROUPS")),
+                    teacher_groups: list(get("BROKELABS_OIDC_TEACHER_GROUPS")),
+                    ca_file: get("BROKELABS_OIDC_CA_FILE").map(PathBuf::from),
+                }),
             },
             admin_username: get("BROKELABS_ADMIN_USERNAME").unwrap_or_else(|| "admin".into()),
             admin_password: match read_file("BROKELABS_ADMIN_PASSWORD_FILE")? {
@@ -179,6 +262,25 @@ mod tests {
             config(&[("BROKELABS_MODE", "organization")]).unwrap().mode,
             Mode::Organization
         );
+    }
+
+    #[test]
+    fn oidc() {
+        assert!(config(&[]).unwrap().oidc.is_none());
+        assert!(config(&[("BROKELABS_OIDC_ISSUER", "https://sso.example.org")]).is_err());
+        let c = config(&[
+            ("BROKELABS_OIDC_ISSUER", "https://sso.example.org"),
+            ("BROKELABS_OIDC_CLIENT_ID", "brokelabs"),
+            ("BROKELABS_OIDC_TEACHER_GROUPS", "teachers, staff,"),
+            ("BROKELABS_PUBLIC_URL", "https://labs.example.org/"),
+        ])
+        .unwrap();
+        let o = c.oidc.unwrap();
+        assert_eq!(o.teacher_groups, ["teachers", "staff"]);
+        assert_eq!(o.scopes, ["openid", "profile", "email"]);
+        assert!(o.manages_roles() && o.client_secret.is_none());
+        assert_eq!(c.public_url, "https://labs.example.org");
+        assert!(config(&[("BROKELABS_PUBLIC_URL", "labs.example.org")]).is_err());
     }
 
     #[test]

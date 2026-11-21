@@ -24,11 +24,14 @@ wildcards = "deny"
 [advisories]
 yanked = "deny"
 # jsonwebtoken's rust_crypto backend compiles every algorithm family. BrokeLabs
-# only signs and verifies EdDSA (Ed25519); Verifier rejects any other "alg",
-# so the RSA and ECDSA code below is never reached. Revisit when upgrading.
+# access tokens are EdDSA (Ed25519) only; Verifier rejects any other "alg".
+# OIDC ID tokens (openidconnect) are often RS256, but only verified with the
+# provider's public keys: the Marvin attack needs private-key operations
+# (decryption), which never happen here. Revisit when upgrading.
 ignore = [
-  { id = "RUSTSEC-2023-0071", reason = "rsa (Marvin attack): RSA keys are never used" },
+  { id = "RUSTSEC-2023-0071", reason = "rsa (Marvin attack): no RSA private key is used; ID tokens are only verified" },
   { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5 via p256/p384: ECDSA keys are never used" },
+  { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained, transitive via openidconnect and oauth2: re-check at each openidconnect upgrade" },
 ]
 
 [sources]

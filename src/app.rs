@@ -30,6 +30,8 @@ pub struct AppState {
     pub cluster: Arc<dyn Cluster>,
     pub hub: Hub,
     pub config: Arc<Config>,
+    /// Single sign-on, when configured.
+    pub oidc: Option<Arc<crate::oidc::Oidc>>,
 }
 
 #[derive(OpenApi)]
@@ -115,6 +117,7 @@ pub fn test_state(db: PgPool, cluster: Arc<dyn Cluster>) -> AppState {
         cluster,
         hub: Hub::default(),
         config: Arc::new(config),
+        oidc: None,
     }
 }
 

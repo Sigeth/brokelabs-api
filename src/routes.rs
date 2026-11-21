@@ -31,6 +31,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(me))
         .routes(routes!(settings))
         .merge(crate::users::router())
+        .merge(crate::oidc::router())
         .routes(routes!(list_challenges))
         .routes(routes!(get_challenge))
         .routes(routes!(list_instances, start_instance))
@@ -86,6 +87,7 @@ async fn logout(State(state): State<AppState>, jar: CookieJar) -> Result<(Cookie
 async fn me_of(state: &AppState, user: db::User) -> Result<Me> {
     Ok(Me {
         score: db::score(&state.db, user.id).await?,
+        sso: user.oidc_subject.is_some(),
         id: user.id,
         username: user.username,
         display_name: user.display_name,
@@ -106,6 +108,10 @@ async fn me(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Re
 async fn settings(State(state): State<AppState>) -> Json<Settings> {
     Json(Settings {
         mode: state.config.mode,
+        sso: state.oidc.as_ref().map(|o| SsoSettings {
+            label: o.config.label.clone(),
+            roles_from_provider: o.config.manages_roles(),
+        }),
     })
 }
 

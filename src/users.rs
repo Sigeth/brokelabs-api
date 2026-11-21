@@ -47,6 +47,10 @@ pub struct UserView {
     pub last_login_at: Option<OffsetDateTime>,
     /// Points of every solved task.
     pub score: i64,
+    /// Signs in with single sign-on (no local password).
+    pub sso: bool,
+    /// From the sign-on provider.
+    pub email: Option<String>,
 }
 
 impl From<db::UserRow> for UserView {
@@ -60,6 +64,8 @@ impl From<db::UserRow> for UserView {
             created_at: u.created_at,
             last_login_at: u.last_login_at,
             score: u.score,
+            sso: u.oidc_subject.is_some(),
+            email: u.email,
         }
     }
 }
@@ -310,6 +316,11 @@ async fn reset_password(
     let user = db::user_by_id(&state.db, id)
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("no user {id}")))?;
+    if user.oidc_subject.is_some() {
+        return Err(ApiError::BadRequest(
+            "this account signs in with single sign-on: it has no password".into(),
+        ));
+    }
     let password = auth::random_token(GENERATED_PASSWORD_BYTES);
     db::set_password(&state.db, id, &auth::hash_password(&password)?).await?;
     if id != admin.id {
@@ -332,6 +343,11 @@ async fn change_password(
     jar: CookieJar,
     Json(req): Json<ChangePassword>,
 ) -> Result<StatusCode> {
+    if user.oidc_subject.is_some() {
+        return Err(ApiError::BadRequest(
+            "your account signs in with single sign-on: change your password there".into(),
+        ));
+    }
     if !auth::verify_password(
         &req.current_password,
         user.password_hash.as_deref().unwrap_or_default(),
