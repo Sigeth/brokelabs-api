@@ -33,6 +33,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .merge(crate::users::router())
         .merge(crate::oidc::router())
         .merge(crate::classrooms::router())
+        .merge(crate::dashboard::router())
         .routes(routes!(list_challenges))
         .routes(routes!(get_challenge))
         .routes(routes!(list_instances, start_instance))
@@ -209,6 +210,15 @@ async fn start_instance(
     CurrentUser(user): CurrentUser,
     Json(req): Json<StartInstance>,
 ) -> Result<(StatusCode, Json<InstanceView>)> {
+    let view = start_for(&state, &user, &req.challenge).await?;
+    Ok((StatusCode::CREATED, Json(view)))
+}
+
+/// Starts a challenge for a user (themselves, or a teacher resetting it).
+pub async fn start_for(state: &AppState, user: &db::User, challenge: &str) -> Result<InstanceView> {
+    let req = StartInstance {
+        challenge: challenge.to_string(),
+    };
     let ch = state
         .cluster
         .challenge(&req.challenge)
@@ -263,10 +273,7 @@ async fn start_instance(
         status: None,
     };
     match state.cluster.create_instance(&instance).await {
-        Ok(created) => Ok((
-            StatusCode::CREATED,
-            Json(views::instance(&created, views::terminals(pkg))),
-        )),
+        Ok(created) => Ok(views::instance(&created, views::terminals(pkg))),
         Err(e) => {
             db::delete_attempt(&state.db, attempt.id).await?;
             Err(e.into())

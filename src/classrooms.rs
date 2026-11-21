@@ -411,7 +411,7 @@ async fn sign_up(
 // ---- Teachers ----
 
 /// A classroom the teacher may manage: their own, or any for admins.
-async fn managed(state: &AppState, teacher: &TeacherUser, id: &str) -> Result<cdb::Classroom> {
+pub async fn managed(state: &AppState, teacher: &TeacherUser, id: &str) -> Result<cdb::Classroom> {
     organization_only(state)?;
     let id = parse_id(id)?;
     cdb::get(&state.db, id)

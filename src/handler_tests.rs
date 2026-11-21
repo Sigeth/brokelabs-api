@@ -965,3 +965,167 @@ async fn classrooms_are_off_in_solo_mode() {
     let (status, mine) = c.send("GET", "/api/v1/classrooms", None).await;
     assert_eq!((status, mine), (StatusCode::OK, json!([])));
 }
+
+#[tokio::test]
+async fn follow_a_classroom() {
+    let Some((state, cluster, _)) = setup().await else {
+        return;
+    };
+    let state = organization(state);
+    let mut admin = client(&state);
+    assert_eq!(try_sign_in(&mut admin, "admin", "pw").await, StatusCode::OK);
+    let mut teacher = account(&state, &mut admin, "tess", "teacher").await;
+    let mut other = account(&state, &mut admin, "otto", "teacher").await;
+    let (_, class) = teacher
+        .send(
+            "POST",
+            "/api/v1/teach/classrooms",
+            Some(json!({"name": "Class 1A"})),
+        )
+        .await;
+    let id = class["id"].as_str().unwrap().to_string();
+    let code = class["inviteCode"].as_str().unwrap().to_string();
+    teacher
+        .send(
+            "PUT",
+            &format!("/api/v1/teach/classrooms/{id}/assignments/hello"),
+            Some(json!({"dueAt": "2026-01-01T00:00:00Z"})),
+        )
+        .await;
+    let mut student = client(&state);
+    let (status, me) = student
+        .send(
+            "POST",
+            &format!("/api/v1/invites/{code}/signup"),
+            Some(json!({"displayName": "=Sam", "username": "sam", "password": "long enough"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let sam = me["id"].as_str().unwrap().to_string();
+    sqlx::query("INSERT INTO solves (user_id, challenge, task, points) SELECT id, 'hello', 't1', 10 FROM users WHERE username = 'sam'")
+        .execute(&state.db)
+        .await
+        .unwrap();
+    let (_, inst) = student
+        .send(
+            "POST",
+            "/api/v1/instances",
+            Some(json!({"challenge": "hello"})),
+        )
+        .await;
+    let instance = inst["id"].as_str().unwrap().to_string();
+
+    // The grid: one student, one assignment, a late solve and a running instance.
+    let (status, p) = teacher
+        .send(
+            "GET",
+            &format!("/api/v1/teach/classrooms/{id}/progress"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{p}");
+    assert_eq!(
+        (
+            p["assignments"][0]["tasks"].as_u64(),
+            p["assignments"][0]["points"].as_i64()
+        ),
+        (Some(2), Some(15))
+    );
+    let row = &p["students"][0];
+    assert_eq!(
+        (row["username"].as_str(), row["points"].as_i64()),
+        (Some("sam"), Some(10))
+    );
+    assert_eq!(
+        (
+            row["cells"][0]["solvedTasks"].as_u64(),
+            row["cells"][0]["late"].as_bool(),
+            row["cells"][0]["done"].as_bool()
+        ),
+        (Some(1), Some(true), Some(false))
+    );
+    assert_eq!(row["instances"][0]["id"], instance);
+
+    // CSV export, with the student's name kept from being a formula.
+    let res = teacher
+        .app
+        .clone()
+        .oneshot(
+            Request::get(format!("/api/v1/teach/classrooms/{id}/progress.csv"))
+                .header(header::COOKIE, teacher.cookie.clone().unwrap())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(
+        res.headers()[header::CONTENT_DISPOSITION]
+            .to_str()
+            .unwrap()
+            .contains("class-1a-progress.csv")
+    );
+    let body =
+        String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+    assert!(body.contains("sam,'=Sam,,"), "{body}");
+
+    // Another teacher cannot see or touch it.
+    let (status, _) = other
+        .send(
+            "GET",
+            &format!("/api/v1/teach/classrooms/{id}/progress"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = other
+        .send(
+            "POST",
+            &format!("/api/v1/teach/classrooms/{id}/members/{sam}/instances/{instance}/reset"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Reset: a fresh instance of the same challenge for the student.
+    let (status, fresh) = teacher
+        .send(
+            "POST",
+            &format!("/api/v1/teach/classrooms/{id}/members/{sam}/instances/{instance}/reset"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{fresh}");
+    let fresh_id = fresh["id"].as_str().unwrap().to_string();
+    assert_ne!(fresh_id, instance);
+    {
+        let instances = cluster.instances.lock().unwrap();
+        assert!(!instances.contains_key(&instance));
+        assert_eq!(instances[&fresh_id].spec.owner.user_id, sam);
+    }
+    let (_, mine) = student.send("GET", "/api/v1/instances", None).await;
+    assert_eq!(mine[0]["id"], fresh_id);
+    assert_eq!(cluster.instances.lock().unwrap().len(), 1);
+
+    // Stop.
+    let (status, _) = teacher
+        .send(
+            "DELETE",
+            &format!("/api/v1/teach/classrooms/{id}/members/{sam}/instances/{fresh_id}"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert!(cluster.instances.lock().unwrap().is_empty());
+    let (status, _) = teacher
+        .send(
+            "DELETE",
+            &format!("/api/v1/teach/classrooms/{id}/members/{sam}/instances/{fresh_id}"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    // The score is kept.
+    let (_, me) = student.send("GET", "/api/v1/me", None).await;
+    assert_eq!(me["score"], 10);
+}

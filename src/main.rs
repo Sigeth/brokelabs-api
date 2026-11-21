@@ -9,6 +9,7 @@ mod auth;
 mod classrooms;
 mod cluster;
 mod config;
+mod dashboard;
 mod db;
 mod error;
 mod events;

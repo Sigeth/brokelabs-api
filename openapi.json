@@ -1720,6 +1720,200 @@
         }
       }
     },
+    "/api/v1/teach/classrooms/{id}/members/{user}/instances/{instance}": {
+      "delete": {
+        "tags": [
+          "teach"
+        ],
+        "summary": "Stops a student's instance: everything in it is lost, the score is kept.",
+        "operationId": "stop_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Classroom ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "instance",
+            "in": "path",
+            "description": "Instance ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teach/classrooms/{id}/members/{user}/instances/{instance}/reset": {
+      "post": {
+        "tags": [
+          "teach"
+        ],
+        "summary": "Resets a student's instance: stops it and starts a fresh one of the same\nchallenge for them. The score is kept.",
+        "operationId": "reset_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Classroom ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "instance",
+            "in": "path",
+            "description": "Instance ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceView"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teach/classrooms/{id}/progress": {
+      "get": {
+        "tags": [
+          "teach"
+        ],
+        "summary": "Progress of the classroom's students on its assignments, with their\nrunning instances.",
+        "operationId": "progress",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Classroom ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomProgress"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teach/classrooms/{id}/progress.csv": {
+      "get": {
+        "tags": [
+          "teach"
+        ],
+        "summary": "The progress as a CSV file (one row per student).",
+        "operationId": "progress_csv",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Classroom ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV file",
+            "content": {
+              "text/csv": {}
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/version": {
       "get": {
         "tags": [
@@ -2095,6 +2289,32 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MemberView"
+            }
+          }
+        }
+      },
+      "ClassroomProgress": {
+        "type": "object",
+        "description": "Progress of a classroom's students on its assignments.",
+        "required": [
+          "classroom",
+          "assignments",
+          "students"
+        ],
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgressAssignment"
+            }
+          },
+          "classroom": {
+            "type": "string"
+          },
+          "students": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StudentProgress"
             }
           }
         }
@@ -2779,6 +2999,113 @@
           }
         }
       },
+      "ProgressAssignment": {
+        "type": "object",
+        "description": "An assignment, as a column of the dashboard.",
+        "required": [
+          "challenge",
+          "tasks",
+          "points"
+        ],
+        "properties": {
+          "challenge": {
+            "type": "string"
+          },
+          "dueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "opensAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "points": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "tasks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "None when the challenge is no longer installed."
+          }
+        }
+      },
+      "ProgressCell": {
+        "type": "object",
+        "description": "Where a student stands on one assignment.",
+        "required": [
+          "challenge",
+          "solvedTasks",
+          "solvedPoints",
+          "done",
+          "late"
+        ],
+        "properties": {
+          "challenge": {
+            "type": "string"
+          },
+          "done": {
+            "type": "boolean",
+            "description": "Every task is solved."
+          },
+          "lastSolvedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "late": {
+            "type": "boolean",
+            "description": "A task was solved after the deadline (D58)."
+          },
+          "solvedPoints": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "solvedTasks": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "RunningInstance": {
+        "type": "object",
+        "description": "A running instance of a student.",
+        "required": [
+          "id",
+          "challenge",
+          "phase",
+          "startedAt"
+        ],
+        "properties": {
+          "challenge": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/InstancePhase"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "Settings": {
         "type": "object",
         "description": "How the platform is set up.",
@@ -2927,6 +3254,62 @@
             "type": "string"
           },
           "teacher": {
+            "type": "string"
+          }
+        }
+      },
+      "StudentProgress": {
+        "type": "object",
+        "description": "A row of the dashboard.",
+        "required": [
+          "id",
+          "username",
+          "displayName",
+          "points",
+          "cells",
+          "instances"
+        ],
+        "properties": {
+          "cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgressCell"
+            },
+            "description": "One per assignment, in the order of `assignments`."
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "instances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunningInstance"
+            },
+            "description": "Instances running now, whatever their challenge."
+          },
+          "lastLoginAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "points": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Points on this classroom's assignments."
+          },
+          "username": {
             "type": "string"
           }
         }

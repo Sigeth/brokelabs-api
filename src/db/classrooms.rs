@@ -157,11 +157,12 @@ pub struct Member {
     pub display_name: String,
     pub joined_at: OffsetDateTime,
     pub last_login_at: Option<OffsetDateTime>,
+    pub email: Option<String>,
 }
 
 pub async fn members(db: &PgPool, classroom: Uuid) -> Result<Vec<Member>> {
     sqlx::query_as(
-        "SELECT u.id AS user_id, u.username, u.display_name, m.joined_at, u.last_login_at
+        "SELECT u.id AS user_id, u.username, u.display_name, m.joined_at, u.last_login_at, u.email
          FROM classroom_members m JOIN users u ON u.id = m.user_id
          WHERE m.classroom_id = $1 ORDER BY u.display_name, u.username",
     )
@@ -220,4 +221,58 @@ pub async fn delete_assignment(db: &PgPool, classroom: Uuid, challenge: &str) ->
         .execute(db)
         .await?;
     Ok(done.rows_affected() == 1)
+}
+
+/// A solve of a classroom member.
+#[derive(Clone, Debug, sqlx::FromRow)]
+pub struct MemberSolve {
+    pub user_id: Uuid,
+    pub challenge: String,
+    pub points: i32,
+    pub solved_at: OffsetDateTime,
+}
+
+/// Solves of several users on several challenges.
+pub async fn solves_of(
+    db: &PgPool,
+    users: &[Uuid],
+    challenges: &[String],
+) -> Result<Vec<MemberSolve>> {
+    sqlx::query_as(
+        "SELECT user_id, challenge, points, solved_at FROM solves
+         WHERE user_id = ANY($1) AND challenge = ANY($2)",
+    )
+    .bind(users)
+    .bind(challenges)
+    .fetch_all(db)
+    .await
+}
+
+/// An active attempt of a classroom member.
+#[derive(Clone, Debug, sqlx::FromRow)]
+pub struct MemberAttempt {
+    pub user_id: Uuid,
+    pub challenge: String,
+    pub instance_name: String,
+    pub started_at: OffsetDateTime,
+}
+
+pub async fn active_attempts_of(db: &PgPool, users: &[Uuid]) -> Result<Vec<MemberAttempt>> {
+    sqlx::query_as(
+        "SELECT user_id, challenge, instance_name, started_at FROM attempts
+         WHERE user_id = ANY($1) AND ended_at IS NULL ORDER BY started_at",
+    )
+    .bind(users)
+    .fetch_all(db)
+    .await
+}
+
+pub async fn is_member(db: &PgPool, classroom: Uuid, user: Uuid) -> Result<bool> {
+    sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM classroom_members WHERE classroom_id = $1 AND user_id = $2)",
+    )
+    .bind(classroom)
+    .bind(user)
+    .fetch_one(db)
+    .await
 }
